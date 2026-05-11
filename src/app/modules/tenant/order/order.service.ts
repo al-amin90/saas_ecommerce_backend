@@ -39,21 +39,18 @@ const createOrderIntoDB = async (
   }
 };
 
-const getAllOrdersFromDB = async (subdomain: string, userId?: string) => {
+const getAllOrdersFromDB = async (subdomain: string) => {
   try {
-    let query: any = { tenantId: subdomain };
     const Order = await getTenantModel(subdomain, "Order");
+    await getTenantModel(subdomain, "Product");
 
     // যদি authenticated user থাকে, তার orders দেখাবে
     // যদি admin থাকে, সব orders দেখাবে (তার permission থাকলে)
-    if (userId) {
-      query.userId = new Types.ObjectId(userId);
-    }
 
-    const orders = await Order.find(query)
-      .populate("userId", "name email")
+    const orders = await Order.find()
       .populate("items.productId", "name price images")
       .sort({ createdAt: -1 });
+    // .populate("userId", "name email")
 
     return orders;
   } catch (error) {
@@ -128,7 +125,6 @@ const updateOrderStatusInDB = async (
 
     const order = await Order.findOneAndUpdate(
       {
-        tenantId: subdomain,
         _id: new Types.ObjectId(orderId),
       },
       updateData,
@@ -182,6 +178,89 @@ const cancelOrderInDB = async (subdomain: string, orderId: string) => {
   }
 };
 
+const getDashboardStatsFromDB = async (subdomain: string) => {
+  try {
+    const Order = await getTenantModel(subdomain, "Order");
+
+    const allOrders = await Order.find({ tenantId: subdomain });
+
+    const totalOrders = allOrders.length;
+    const totalRevenue = allOrders.reduce(
+      (sum: number, o: any) => sum + (o.totalPrice || 0),
+      0,
+    );
+
+    // unique customers
+    const uniqueEmails = new Set(
+      allOrders.map((o: any) => o.guestEmail).filter(Boolean),
+    );
+    const uniqueUserIds = new Set(
+      allOrders.map((o: any) => o.userId?.toString()).filter(Boolean),
+    );
+    const totalCustomers = uniqueEmails.size + uniqueUserIds.size;
+
+    const avgOrderValue =
+      totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
+
+    // order status breakdown
+    const statusBreakdown = {
+      pending: 0,
+      processing: 0,
+      shipped: 0,
+      delivered: 0,
+      cancelled: 0,
+    };
+    allOrders.forEach((o: any) => {
+      if (
+        statusBreakdown[o.orderStatus as keyof typeof statusBreakdown] !==
+        undefined
+      ) {
+        statusBreakdown[o.orderStatus as keyof typeof statusBreakdown]++;
+      }
+    });
+
+    // last 7 days daily orders
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().split("T")[0];
+    });
+
+    const dailyOrders = last7Days.map((date) => {
+      const dayOrders = allOrders.filter((o: any) => {
+        const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
+        return orderDate === date;
+      });
+      return {
+        date,
+        orders: dayOrders.length,
+        revenue: dayOrders.reduce(
+          (sum: number, o: any) => sum + (o.totalPrice || 0),
+          0,
+        ),
+      };
+    });
+
+    // recent 5 orders
+    const recentOrders = await Order.find({ tenantId: subdomain })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate("items.productId", "name images");
+
+    return {
+      totalOrders,
+      totalRevenue,
+      totalCustomers,
+      avgOrderValue,
+      statusBreakdown,
+      dailyOrders,
+      recentOrders,
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
 export default {
   createOrderIntoDB,
   getAllOrdersFromDB,
@@ -189,4 +268,5 @@ export default {
   getGuestOrderFromDB,
   updateOrderStatusInDB,
   cancelOrderInDB,
+  getDashboardStatsFromDB,
 };

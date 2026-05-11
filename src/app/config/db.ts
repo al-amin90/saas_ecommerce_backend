@@ -37,6 +37,9 @@ class DBManager extends EventEmitter {
       connectionTimeout: config.poolConfig.connectionTimeout,
       poolSize: config.poolConfig.poolSize,
     };
+
+    // Prevent memory leaks from event listeners
+    this.setMaxListeners(50);
   }
 
   // :::) get software db urls
@@ -86,14 +89,22 @@ class DBManager extends EventEmitter {
     const options = this.getConnectionOptions(this.config.poolSize.central);
     console.log("Connecting to Central DB...");
 
-    this.centralConnection = await mongoose
-      .createConnection(uris.central, options)
-      .asPromise();
+    try {
+      this.centralConnection = await mongoose
+        .createConnection(uris.central, options)
+        .asPromise();
 
-    this.setupConnectionHandlers(this.centralConnection, "CENTRAL_DB");
-    console.log("Central DB connected.....");
+      this.setupConnectionHandlers(this.centralConnection, "CENTRAL_DB");
+      console.log("Central DB connected.....");
 
-    this.emit("centralConnected");
+      this.emit("centralConnected");
+    } catch (error) {
+      console.error("Failed to connect to Central DB:", error);
+      throw new AppError(
+        status.INTERNAL_SERVER_ERROR,
+        "Central database connection failed",
+      );
+    }
 
     return this.centralConnection;
   }
@@ -105,13 +116,21 @@ class DBManager extends EventEmitter {
     const options = this.getConnectionOptions(this.config.poolSize.single);
 
     console.log("🔄 Connecting to Single Tenant DB...");
-    this.singleConnection = await mongoose
-      .createConnection(uris.single, options)
-      .asPromise();
+    try {
+      this.singleConnection = await mongoose
+        .createConnection(uris.single, options)
+        .asPromise();
 
-    this.setupConnectionHandlers(this.singleConnection, "SINGLE_DB");
-    console.log("✅ Single DB connected");
-    this.emit("singleConnected");
+      this.setupConnectionHandlers(this.singleConnection, "SINGLE_DB");
+      console.log("✅ Single DB connected");
+      this.emit("singleConnected");
+    } catch (error) {
+      console.error("Failed to connect to Single DB:", error);
+      throw new AppError(
+        status.INTERNAL_SERVER_ERROR,
+        "Single database connection failed",
+      );
+    }
 
     return this.singleConnection;
   }
@@ -138,7 +157,7 @@ class DBManager extends EventEmitter {
       : null;
   }
 
-  // :::) tanent connection managment
+  // :::) tenant connection management
   private async getTenantConnection(tenantId: string): Promise<Connection> {
     const existing = this.tenantConnections.get(tenantId);
 
@@ -173,43 +192,51 @@ class DBManager extends EventEmitter {
 
     console.log(`Creating connection: ${tenantId}///`);
 
-    const connection = await mongoose
-      .createConnection(tenantUri, options)
-      .asPromise();
+    try {
+      const connection = await mongoose
+        .createConnection(tenantUri, options)
+        .asPromise();
 
-    if (!connection.db) {
-      await connection.close();
-      throw new AppError(
-        status.INTERNAL_SERVER_ERROR,
-        `DB not initialized for tenant: ${tenantId}`,
+      if (!connection.db) {
+        await connection.close().catch(() => {});
+        throw new AppError(
+          status.INTERNAL_SERVER_ERROR,
+          `DB not initialized for tenant: ${tenantId}`,
+        );
+      }
+
+      // :::) verify correct DB
+      if (connection.db.databaseName !== tenantDBName) {
+        await connection.close().catch(() => {});
+        throw new AppError(
+          status.INTERNAL_SERVER_ERROR,
+          `Wrong DB connected: ${connection.db.databaseName}, expected: ${tenantDBName}`,
+        );
+      }
+
+      this.setupConnectionHandlers(connection, tenantId);
+      this.tenantConnections.set(tenantId, connection);
+      this.updateConnectionMetadata(tenantId);
+
+      console.log(
+        `✅ Tenant connected: ${tenantId} (total: ${this.tenantConnections.size})`,
       );
-    }
+      this.emit("tenantConnectionCreated", {
+        tenantId,
+        total: this.tenantConnections.size,
+      });
 
-    //:::) verify correct DB
-    if (connection.db.databaseName !== tenantDBName) {
-      await connection.close();
-      throw new AppError(
-        status.INTERNAL_SERVER_ERROR,
-        `Wrong DB connected: ${connection.db.databaseName}, expected: ${tenantDBName}`,
+      return connection;
+    } catch (error) {
+      console.error(
+        `Failed to create tenant connection for ${tenantId}:`,
+        error,
       );
+      throw error;
     }
-
-    this.setupConnectionHandlers(connection, tenantId);
-    this.tenantConnections.set(tenantId, connection);
-    this.updateConnectionMetadata(tenantId);
-
-    console.log(
-      `✅ Tenant connected: ${tenantId} (total: ${this.tenantConnections.size})`,
-    );
-    this.emit("tenantConnectionCreated", {
-      tenantId,
-      total: this.tenantConnections.size,
-    });
-
-    return connection;
   }
 
-  // :::) matedata methods are here
+  // :::) metadata methods are here
   private updateConnectionMetadata(tenantId: string): void {
     const existing = this.connectionMetadata.get(tenantId);
     this.connectionMetadata.set(tenantId, {
@@ -219,16 +246,19 @@ class DBManager extends EventEmitter {
     });
   }
 
-  // :::) cleann up methods are here
+  // :::) cleanup methods are here
   private async removeConnection(tenantId: string): Promise<void> {
     const conn = this.tenantConnections.get(tenantId);
     if (!conn) return;
+
     try {
       await conn.close();
+    } catch (error) {
+      console.error(`Error closing connection for ${tenantId}:`, error);
     } finally {
       this.tenantConnections.delete(tenantId);
       this.connectionMetadata.delete(tenantId);
-      console.log(`Removed: ${tenantId} `);
+      console.log(`Removed: ${tenantId}`);
       this.emit("connectionRemoved", { tenantId });
     }
   }
@@ -244,7 +274,11 @@ class DBManager extends EventEmitter {
       }
     }
 
-    if (oldestId) await this.removeConnection(oldestId);
+    if (oldestId) {
+      await this.removeConnection(oldestId).catch((err) =>
+        console.error(`Error removing oldest connection ${oldestId}:`, err),
+      );
+    }
   }
 
   private startCleanupJob(): void {
@@ -256,7 +290,9 @@ class DBManager extends EventEmitter {
 
       for (const [tenantId, meta] of this.connectionMetadata) {
         if (now - meta.lastAccess > this.config.maxIdleTime) {
-          void this.removeConnection(tenantId);
+          this.removeConnection(tenantId).catch((err) =>
+            console.error(`Cleanup error for ${tenantId}:`, err),
+          );
         }
       }
     }, this.config.cleanupInterval);
@@ -264,9 +300,9 @@ class DBManager extends EventEmitter {
     this.emit("cleanupStarted");
   }
 
-  // :::) utilis are here ----------- Connection event handlers
-  private setupConnectionHandlers(connection: Connection, id: string) {
-    connection.on("error", (err) => {
+  // :::) utils are here ----------- Connection event handlers
+  private setupConnectionHandlers(connection: Connection, id: string): void {
+    connection.on("error", (err: Error) => {
       console.error(`❌ DB error [${id}]:`, err.message);
       this.emit("connectionError", { id, error: err });
     });
@@ -280,9 +316,11 @@ class DBManager extends EventEmitter {
       }
       this.emit("connectionDisconnected", { id });
     });
-    connection.on("reconnected", () =>
-      this.emit("connectionReconnected", { id }),
-    );
+
+    connection.on("reconnected", () => {
+      console.log(`🔄 Reconnected: ${id}`);
+      this.emit("connectionReconnected", { id });
+    });
   }
 
   // :::) Monitoring are here
@@ -326,24 +364,29 @@ class DBManager extends EventEmitter {
       checks: {},
     };
 
-    const ping = async (conn: Connection | null, key: string) => {
+    const ping = async (
+      conn: Connection | null,
+      key: string,
+    ): Promise<void> => {
       if (!conn) {
         health.checks[key] = "not_initialized";
         return;
       }
       try {
-        await conn.db.admin().ping();
+        await conn.db?.admin().ping();
         health.checks[key] = "connected";
-      } catch {
+      } catch (error) {
         health.checks[key] = "error";
         health.status = "unhealthy";
       }
     };
 
-    if (this.tenancyType === "multi")
+    if (this.tenancyType === "multi") {
       await ping(this.centralConnection, "central");
-    if (this.tenancyType === "single")
+    }
+    if (this.tenancyType === "single") {
       await ping(this.singleConnection, "single");
+    }
 
     health.checks["tenantCount"] = this.tenantConnections.size;
     return health;
@@ -354,20 +397,47 @@ class DBManager extends EventEmitter {
     if (this.isShuttingDown) return;
     this.isShuttingDown = true;
 
+    console.log("Starting graceful shutdown...");
+
+    // Stop accepting new connections
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
 
-    const closing = [...this.tenantConnections.values()].map((c) => c.close());
+    // Close all tenant connections
+    const closing = [...this.tenantConnections.values()].map((conn) =>
+      conn
+        .close()
+        .catch((err) => console.error("Error closing tenant connection:", err)),
+    );
+
     await Promise.allSettled(closing);
     this.tenantConnections.clear();
     this.connectionMetadata.clear();
 
-    await this.centralConnection?.close();
-    await this.singleConnection?.close();
-    this.centralConnection = null;
-    this.singleConnection = null;
+    // Close central connection
+    if (this.centralConnection) {
+      try {
+        await this.centralConnection.close();
+      } catch (err) {
+        console.error("Error closing central connection:", err);
+      }
+      this.centralConnection = null;
+    }
+
+    // Close single connection
+    if (this.singleConnection) {
+      try {
+        await this.singleConnection.close();
+      } catch (err) {
+        console.error("Error closing single connection:", err);
+      }
+      this.singleConnection = null;
+    }
+
+    // Remove all event listeners to prevent memory leaks
+    this.removeAllListeners();
 
     console.log("✅ All DB connections closed");
     this.emit("shutdownComplete");

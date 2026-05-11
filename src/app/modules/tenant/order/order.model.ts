@@ -24,7 +24,11 @@ const orderSchema = new Schema<IOrder>(
     },
     items: [
       {
-        productId: Schema.Types.ObjectId,
+        productId: {
+          type: Schema.Types.ObjectId,
+          ref: "Product",
+          required: true,
+        },
         quantity: Number,
         selectedSize: String,
         selectedColor: String,

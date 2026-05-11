@@ -14,4 +14,20 @@ router.post(
   orderController.createOrder,
 );
 
+router.get("/stats", orderController.getDashboardStats);
+router.get("/", orderController.getAllOrders);
+router.get("/guest", orderController.getGuestOrder);
+router.get("/:orderId", orderController.getOrderById);
+
+router.patch(
+  "/:orderId/status",
+
+  orderController.updateOrderStatus,
+);
+router.patch(
+  "/:orderId/cancel",
+
+  orderController.cancelOrder,
+);
+
 export const orderRouter = router;

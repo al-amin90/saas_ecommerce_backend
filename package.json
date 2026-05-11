@@ -7,7 +7,10 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=3072 esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.js",
+    "build": "NODE_OPTIONS=--max-old-space-size=4096 tsc --incremental false",
+    "type-check": "tsc --noEmit",
+    "dev": "ts-node src/server.ts",
+    "start": "node dist/server.js",
     "start:prod": "node ./dist/server.js",
     "start:dev": "ts-node-dev --respawn --transpile-only ./src/server.ts",
     "lint": "eslint --ext .ts src/",
