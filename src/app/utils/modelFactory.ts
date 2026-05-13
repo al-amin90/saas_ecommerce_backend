@@ -10,6 +10,7 @@ import {
   variantSchema,
 } from "../modules/tenant/product/product.model";
 import orderSchema from "../modules/tenant/order/order.model";
+import deliveryMethodSchema from "../modules/tenant/deliveryMethod/deliveryMethod.schema";
 
 export type CentralModelName =
   | "TenantRequest"

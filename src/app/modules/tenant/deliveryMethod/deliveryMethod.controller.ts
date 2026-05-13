@@ -56,7 +56,7 @@ const getDeliveryMethodById = catchAsync(
 
     const result = await deliveryMethodService.getDeliveryMethodByIdFromDB(
       subdomain,
-      deliveryMethodId,
+      deliveryMethodId as string,
     );
 
     sendResponse(res, {
@@ -76,7 +76,7 @@ const updateDeliveryMethod = catchAsync(
 
     const result = await deliveryMethodService.updateDeliveryMethodInDB(
       subdomain,
-      deliveryMethodId,
+      deliveryMethodId as string,
       req.body,
     );
 
@@ -97,14 +97,14 @@ const deleteDeliveryMethod = catchAsync(
 
     const result = await deliveryMethodService.deleteDeliveryMethodFromDB(
       subdomain,
-      deliveryMethodId,
+      deliveryMethodId as string,
     );
 
     sendResponse(res, {
       statusCode: status.OK,
       success: true,
       message: "Delivery method deleted successfully",
-      data: result,
+      data: null,
     });
   },
 );

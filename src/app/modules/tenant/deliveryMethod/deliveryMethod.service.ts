@@ -42,7 +42,6 @@ const createDeliveryMethodInDB = async (
 
     // Check if delivery method type already exists
     const existingMethod = await DeliveryMethod.findOne({
-      tenantId: subdomain,
       type: payload.type,
     });
 
@@ -52,10 +51,7 @@ const createDeliveryMethodInDB = async (
       );
     }
 
-    const deliveryMethod = await DeliveryMethod.create({
-      tenantId: subdomain,
-      ...payload,
-    });
+    const deliveryMethod = await DeliveryMethod.create(payload);
 
     return deliveryMethod;
   } catch (error) {
@@ -64,29 +60,11 @@ const createDeliveryMethodInDB = async (
 };
 
 // ✅ GET ALL - সব Delivery Methods পাই
-const getAllDeliveryMethodsFromDB = async (
-  subdomain: string,
-  filters?: {
-    isActive?: boolean;
-    type?: string;
-  },
-) => {
+const getAllDeliveryMethodsFromDB = async (subdomain: string) => {
   try {
     const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
 
-    const query: any = { tenantId: subdomain };
-
-    // Filter by active status if provided
-    if (filters?.isActive !== undefined) {
-      query.isActive = filters.isActive;
-    }
-
-    // Filter by type if provided
-    if (filters?.type) {
-      query.type = filters.type;
-    }
-
-    const deliveryMethods = await DeliveryMethod.find(query).sort({
+    const deliveryMethods = await DeliveryMethod.find().sort({
       createdAt: -1,
     });
 
@@ -104,10 +82,7 @@ const getDeliveryMethodByIdFromDB = async (
   try {
     const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
 
-    const deliveryMethod = await DeliveryMethod.findOne({
-      tenantId: subdomain,
-      _id: new Types.ObjectId(deliveryMethodId),
-    });
+    const deliveryMethod = await DeliveryMethod.findById(deliveryMethodId);
 
     if (!deliveryMethod) {
       throw new Error("Delivery method not found");
@@ -129,10 +104,8 @@ const updateDeliveryMethodInDB = async (
     const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
 
     // Check if delivery method exists
-    const existingMethod = await DeliveryMethod.findOne({
-      tenantId: subdomain,
-      _id: new Types.ObjectId(deliveryMethodId),
-    });
+    const existingMethod: IDeliveryMethod | null =
+      await DeliveryMethod.findById(deliveryMethodId);
 
     if (!existingMethod) {
       throw new Error("Delivery method not found");
@@ -141,7 +114,6 @@ const updateDeliveryMethodInDB = async (
     // If updating type, check for duplicates
     if (payload.type && payload.type !== existingMethod.type) {
       const duplicateType = await DeliveryMethod.findOne({
-        tenantId: subdomain,
         type: payload.type,
         _id: { $ne: new Types.ObjectId(deliveryMethodId) },
       });
@@ -153,11 +125,8 @@ const updateDeliveryMethodInDB = async (
       }
     }
 
-    const updatedMethod = await DeliveryMethod.findOneAndUpdate(
-      {
-        tenantId: subdomain,
-        _id: new Types.ObjectId(deliveryMethodId),
-      },
+    const updatedMethod = await DeliveryMethod.findByIdAndUpdate(
+      deliveryMethodId,
       { $set: payload },
       { new: true, runValidators: true },
     );
@@ -179,7 +148,6 @@ const deleteDeliveryMethodFromDB = async (
 
     // Check if this delivery method is used in any active orders
     const activeOrders = await Order.findOne({
-      tenantId: subdomain,
       deliveryMethodId: new Types.ObjectId(deliveryMethodId),
       orderStatus: { $in: ["pending", "processing", "shipped"] },
     });
@@ -188,16 +156,14 @@ const deleteDeliveryMethodFromDB = async (
       throw new Error("Cannot delete delivery method that has active orders");
     }
 
-    const deletedMethod = await DeliveryMethod.findOneAndDelete({
-      tenantId: subdomain,
-      _id: new Types.ObjectId(deliveryMethodId),
-    });
+    const deletedMethod =
+      await DeliveryMethod.findByIdAndDelete(deliveryMethodId);
 
     if (!deletedMethod) {
       throw new Error("Delivery method not found");
     }
 
-    return deletedMethod;
+    return null;
   } catch (error) {
     throw error;
   }

@@ -2,7 +2,6 @@ import { Document, Types } from "mongoose";
 
 export interface IDeliveryMethod extends Document {
   _id: Types.ObjectId;
-  tenantId: string;
 
   // Basic info
   name: string;

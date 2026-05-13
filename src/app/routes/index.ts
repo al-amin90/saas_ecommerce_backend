@@ -4,6 +4,7 @@ import { categoryRouter } from "../modules/tenant/category/category.route";
 import { colorRouter } from "../modules/tenant/color/color.route";
 import { productRouter } from "../modules/tenant/product/product.route";
 import { orderRouter } from "../modules/tenant/order/order.route";
+import { deliveryMethodRouter } from "../modules/tenant/deliveryMethod/deliveryMethod.route";
 
 const router = Router();
 
@@ -29,8 +30,8 @@ const moduleRouters = [
     route: orderRouter,
   },
   {
-    path: "/order",
-    route: orderRouter,
+    path: "/delivery-method",
+    route: deliveryMethodRouter,
   },
 ];
 
