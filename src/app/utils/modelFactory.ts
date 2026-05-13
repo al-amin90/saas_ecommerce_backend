@@ -24,7 +24,8 @@ export type TenantModelName =
   | "Color"
   | "Product"
   | "Variant"
-  | "Order";
+  | "Order"
+  | "DeliveryMethod";
 
 export type ModelName = CentralModelName | TenantModelName;
 
@@ -39,6 +40,7 @@ const schemaRegistry: Record<ModelName, Schema> = {
   Product: productSchema,
   Variant: variantSchema,
   Order: orderSchema,
+  DeliveryMethod: deliveryMethodSchema,
 };
 
 const centralModelNames: CentralModelName[] = [
@@ -55,6 +57,7 @@ const tenantModelNames: TenantModelName[] = [
   "Product",
   "Variant",
   "Order",
+  "DeliveryMethod",
 ];
 
 class ModelFactory {

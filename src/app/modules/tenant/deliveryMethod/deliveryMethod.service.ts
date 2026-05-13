@@ -1,0 +1,389 @@
+import { getTenantModel } from "../../../utils/getTenantModel";
+import axios from "axios";
+import { IDeliveryMethod } from "./deliveryMethod.interface";
+import { Types } from "mongoose";
+
+// Courier API endpoints
+const COURIER_APIs = {
+  PATHAO: {
+    baseUrl: "https://aladdin-api.pathao.com",
+    endpoints: {
+      createOrder: "/aladdin/api/v1/orders",
+      getStatus: "/aladdin/api/v1/orders/:id",
+    },
+  },
+  REDX: {
+    baseUrl: "https://api.redx.com",
+    endpoints: {
+      createOrder: "/v1/parcels",
+    },
+  },
+  STEDFAST: {
+    baseUrl: "https://api.stedfast.com.bd",
+    endpoints: {
+      createOrder: "/api/v2/create_order",
+    },
+  },
+  CARRYBEE: {
+    baseUrl: "https://api.carrybee.com",
+    endpoints: {
+      createOrder: "/api/parcel/create",
+    },
+  },
+};
+
+// ✅ CREATE - নতুন Delivery Method যোগ করি
+const createDeliveryMethodInDB = async (
+  subdomain: string,
+  payload: IDeliveryMethod,
+) => {
+  try {
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    // Check if delivery method type already exists
+    const existingMethod = await DeliveryMethod.findOne({
+      tenantId: subdomain,
+      type: payload.type,
+    });
+
+    if (existingMethod) {
+      throw new Error(
+        `Delivery method ${payload.type} already exists for this tenant`,
+      );
+    }
+
+    const deliveryMethod = await DeliveryMethod.create({
+      tenantId: subdomain,
+      ...payload,
+    });
+
+    return deliveryMethod;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ GET ALL - সব Delivery Methods পাই
+const getAllDeliveryMethodsFromDB = async (
+  subdomain: string,
+  filters?: {
+    isActive?: boolean;
+    type?: string;
+  },
+) => {
+  try {
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    const query: any = { tenantId: subdomain };
+
+    // Filter by active status if provided
+    if (filters?.isActive !== undefined) {
+      query.isActive = filters.isActive;
+    }
+
+    // Filter by type if provided
+    if (filters?.type) {
+      query.type = filters.type;
+    }
+
+    const deliveryMethods = await DeliveryMethod.find(query).sort({
+      createdAt: -1,
+    });
+
+    return deliveryMethods;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ GET SINGLE - একটি Delivery Method পাই
+const getDeliveryMethodByIdFromDB = async (
+  subdomain: string,
+  deliveryMethodId: string,
+) => {
+  try {
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    const deliveryMethod = await DeliveryMethod.findOne({
+      tenantId: subdomain,
+      _id: new Types.ObjectId(deliveryMethodId),
+    });
+
+    if (!deliveryMethod) {
+      throw new Error("Delivery method not found");
+    }
+
+    return deliveryMethod;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ UPDATE/PATCH - Delivery Method আপডেট করি
+const updateDeliveryMethodInDB = async (
+  subdomain: string,
+  deliveryMethodId: string,
+  payload: Partial<IDeliveryMethod>,
+) => {
+  try {
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    // Check if delivery method exists
+    const existingMethod = await DeliveryMethod.findOne({
+      tenantId: subdomain,
+      _id: new Types.ObjectId(deliveryMethodId),
+    });
+
+    if (!existingMethod) {
+      throw new Error("Delivery method not found");
+    }
+
+    // If updating type, check for duplicates
+    if (payload.type && payload.type !== existingMethod.type) {
+      const duplicateType = await DeliveryMethod.findOne({
+        tenantId: subdomain,
+        type: payload.type,
+        _id: { $ne: new Types.ObjectId(deliveryMethodId) },
+      });
+
+      if (duplicateType) {
+        throw new Error(
+          `Delivery method ${payload.type} already exists for this tenant`,
+        );
+      }
+    }
+
+    const updatedMethod = await DeliveryMethod.findOneAndUpdate(
+      {
+        tenantId: subdomain,
+        _id: new Types.ObjectId(deliveryMethodId),
+      },
+      { $set: payload },
+      { new: true, runValidators: true },
+    );
+
+    return updatedMethod;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ DELETE - Delivery Method ডিলিট করি
+const deleteDeliveryMethodFromDB = async (
+  subdomain: string,
+  deliveryMethodId: string,
+) => {
+  try {
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+    const Order = await getTenantModel(subdomain, "Order");
+
+    // Check if this delivery method is used in any active orders
+    const activeOrders = await Order.findOne({
+      tenantId: subdomain,
+      deliveryMethodId: new Types.ObjectId(deliveryMethodId),
+      orderStatus: { $in: ["pending", "processing", "shipped"] },
+    });
+
+    if (activeOrders) {
+      throw new Error("Cannot delete delivery method that has active orders");
+    }
+
+    const deletedMethod = await DeliveryMethod.findOneAndDelete({
+      tenantId: subdomain,
+      _id: new Types.ObjectId(deliveryMethodId),
+    });
+
+    if (!deletedMethod) {
+      throw new Error("Delivery method not found");
+    }
+
+    return deletedMethod;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ Order submit করলে Courier API কে call করি
+const submitOrderToCourier = async (
+  subdomain: string,
+  orderId: string,
+  deliveryMethodId: string,
+) => {
+  try {
+    const Order = await getTenantModel(subdomain, "Order");
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    // Order খুঁজি
+    const order = await Order.findOne({
+      tenantId: subdomain,
+      _id: new Types.ObjectId(orderId),
+    }).populate("items.productId");
+
+    if (!order) {
+      throw new Error("Order not found");
+    }
+
+    if (order.orderStatus !== "pending") {
+      throw new Error("Only pending orders can be sent to courier");
+    }
+
+    // Delivery Method খুঁজি
+    const deliveryMethod = await DeliveryMethod.findOne({
+      _id: new Types.ObjectId(deliveryMethodId),
+      isActive: true,
+    });
+
+    if (!deliveryMethod) {
+      throw new Error("Delivery method not found or inactive");
+    }
+
+    // Courier API তে request তৈরি করি
+    const courierPayload = prepareCourierPayload(order, deliveryMethod);
+
+    // Courier API কে POST করি
+    const courierResponse = await sendToCourierAPI(
+      deliveryMethod.type,
+      courierPayload,
+      deliveryMethod,
+    );
+
+    // Tracking ID পেয়ে Order update করি
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id: new Types.ObjectId(orderId) },
+      {
+        orderStatus: "processing",
+        deliveryMethodId: new Types.ObjectId(deliveryMethodId),
+        courierTrackingId: courierResponse.trackingId,
+        courierResponse: courierResponse,
+      },
+      { new: true },
+    ).populate("items.productId");
+
+    return updatedOrder;
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ Courier API তে request পাঠাই
+const sendToCourierAPI = async (
+  courierType: string,
+  payload: any,
+  deliveryMethod: IDeliveryMethod,
+) => {
+  try {
+    const courierConfig =
+      COURIER_APIs[courierType as keyof typeof COURIER_APIs];
+
+    if (!courierConfig) {
+      throw new Error(`Courier ${courierType} not supported`);
+    }
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${deliveryMethod.clientId}:${deliveryMethod.clientSecret}`,
+    };
+
+    const response = await axios.post(
+      `${courierConfig.baseUrl}${courierConfig.endpoints.createOrder}`,
+      payload,
+      { headers, timeout: 10000 },
+    );
+
+    return {
+      trackingId: response.data.tracking_id || response.data.id,
+      status: "processing",
+      courierData: response.data,
+    };
+  } catch (error) {
+    throw error;
+  }
+};
+
+// ✅ Courier payload তৈরি করি
+const prepareCourierPayload = (order: any, deliveryMethod: IDeliveryMethod) => {
+  const guestInfo = order.guestInfo;
+
+  return {
+    recipient_name: guestInfo.fullName,
+    recipient_phone: guestInfo.phone,
+    recipient_address: guestInfo.address,
+    recipient_city: guestInfo.city,
+    recipient_postal_code: guestInfo.postalCode || "",
+    merchant_order_id: order.orderNumber,
+    item_quantity: order.items.length,
+    item_weight: 0.5,
+    amount_to_collect: order.totalPrice,
+    instructions: deliveryMethod.defaultShippingNote || "Handle with care",
+    note: "Order from online store",
+  };
+};
+
+// ✅ Webhook থেকে Status Update পাবো
+const handleCourierWebhookInDB = async (subdomain: string, payload: any) => {
+  try {
+    const Order = await getTenantModel(subdomain, "Order");
+    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+    // Delivery Method খুঁজে webhook secret verify করি
+    const deliveryMethod = await DeliveryMethod.findOne({
+      tenantId: subdomain,
+      type: payload.courierType,
+    });
+
+    if (!deliveryMethod?.webhookSecret) {
+      throw new Error("Delivery method not configured for webhooks");
+    }
+
+    // Webhook secret verify করি
+    if (payload.webhookSecret !== deliveryMethod.webhookSecret) {
+      throw new Error("Invalid webhook secret");
+    }
+
+    // Courier এর tracking ID দিয়ে Order খুঁজি
+    const order = await Order.findOne({
+      tenantId: subdomain,
+      courierTrackingId: payload.trackingId,
+    });
+
+    if (!order) {
+      throw new Error("Order not found for tracking ID");
+    }
+
+    // Courier status কে Order status এ map করি
+    const orderStatusMap: Record<string, string> = {
+      in_transit: "shipped",
+      delivered: "delivered",
+      cancelled: "cancelled",
+      failed: "cancelled",
+      pending: "processing",
+    };
+
+    const newOrderStatus =
+      orderStatusMap[payload.courierStatus] || order.orderStatus;
+
+    // Order update করি
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id: order._id },
+      {
+        orderStatus: newOrderStatus,
+        courierResponse: payload,
+      },
+      { new: true },
+    ).populate("items.productId");
+
+    return updatedOrder;
+  } catch (error) {
+    throw error;
+  }
+};
+
+export default {
+  createDeliveryMethodInDB,
+  getAllDeliveryMethodsFromDB,
+  getDeliveryMethodByIdFromDB,
+  updateDeliveryMethodInDB,
+  deleteDeliveryMethodFromDB,
+  submitOrderToCourier,
+  handleCourierWebhookInDB,
+};

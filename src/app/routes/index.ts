@@ -28,6 +28,10 @@ const moduleRouters = [
     path: "/order",
     route: orderRouter,
   },
+  {
+    path: "/order",
+    route: orderRouter,
+  },
 ];
 
 moduleRouters.forEach((route) => {
