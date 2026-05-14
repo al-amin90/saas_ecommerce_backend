@@ -34,4 +34,6 @@ router.delete(
   deliveryMethodController.deleteDeliveryMethod,
 );
 
+router.post("/webhook/courier", deliveryMethodController.receiveCourierWebhook);
+
 export const deliveryMethodRouter = router;

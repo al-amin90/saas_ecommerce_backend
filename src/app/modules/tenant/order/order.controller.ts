@@ -6,6 +6,7 @@ import status from "http-status";
 import catchAsync from "../../../utils/catchAsync";
 import sendResponse from "../../../utils/SendResponse";
 import orderService from "./order.service";
+import deliveryMethodService from "../deliveryMethod/deliveryMethod.service";
 
 const createOrder = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {

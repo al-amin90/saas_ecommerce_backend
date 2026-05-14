@@ -17,6 +17,9 @@ export default {
 
   cloudinary_url: process.env.CLOUDINARY_URL,
 
+  webhook_secret: process.env.WEBHOOK_SECRET,
+  webhook_url: process.env.WEBHOOK_URL,
+
   jwt: {
     access_token: process.env.JWT_ACCESS_TOKEN,
     refresh_token: process.env.JWT_REFRESH_TOKEN,
@@ -33,6 +36,29 @@ export default {
     multiProductionUri: process.env.MULTI_PRODUCTION_DB_URL,
     centralProductionUri: process.env.CENTRAL_PRODUCTION_DB_URL,
   },
+
+  // ========== PATHAO SANDBOX ==========
+  pathao_sandbox: {
+    base_url: process.env.PATHAO_SANDBOX_BASE_URL,
+    client_id: process.env.PATHAO_SANDBOX_CLIENT_ID,
+    client_secret: process.env.PATHAO_SANDBOX_CLIENT_SECRET,
+    username: process.env.PATHAO_SANDBOX_USERNAME,
+    password: process.env.PATHAO_SANDBOX_PASSWORD,
+  },
+
+  // ========== PATHAO LIVE ==========
+  pathao_live: {
+    base_url: process.env.PATHAO_LIVE_BASE_URL,
+    client_id: process.env.PATHAO_LIVE_CLIENT_ID,
+    client_secret: process.env.PATHAO_LIVE_CLIENT_SECRET,
+    username: process.env.PATHAO_LIVE_USERNAME,
+    password: process.env.PATHAO_LIVE_PASSWORD,
+  },
+
+  // ========== PATHAO ENVIRONMENT ==========
+  pathao_environment:
+    (process.env.PATHAO_ENVIRONMENT as "sandbox" | "live") || "sandbox",
+
   poolConfig: {
     maxTenantConnections: parseInt(process.env.MAX_TENANT_CONNECTIONS ?? "100"),
     maxConnectionIdleTime: parseInt(

@@ -24,10 +24,6 @@ router.patch(
 
   orderController.updateOrderStatus,
 );
-router.patch(
-  "/:orderId/cancel",
-
-  orderController.cancelOrder,
-);
+router.patch("/:orderId/cancel", orderController.cancelOrder);
 
 export const orderRouter = router;

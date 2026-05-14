@@ -23,8 +23,10 @@ export interface IOrder extends Document {
 
   // Guest checkout
   guestCheckout: boolean;
-  guestEmail?: string;
-  guestInfo?: IGuestInfo;
+  guestEmail: string;
+  guestInfo: IGuestInfo;
+  // guestEmail?: string;
+  // guestInfo?: IGuestInfo;
 
   // Auth user
   userId?: Types.ObjectId;

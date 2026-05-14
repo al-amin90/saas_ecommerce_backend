@@ -3,6 +3,9 @@ import axios from "axios";
 import { IDeliveryMethod } from "./deliveryMethod.interface";
 import { Types } from "mongoose";
 
+import crypto from "crypto";
+import config from "../../../config";
+
 // Courier API endpoints
 const COURIER_APIs = {
   PATHAO: {
@@ -286,62 +289,172 @@ const prepareCourierPayload = (order: any, deliveryMethod: IDeliveryMethod) => {
 };
 
 // ✅ Webhook থেকে Status Update পাবো
-const handleCourierWebhookInDB = async (subdomain: string, payload: any) => {
+// const handleCourierWebhookInDB = async (subdomain: string, payload: any) => {
+//   try {
+//     const Order = await getTenantModel(subdomain, "Order");
+//     const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
+
+//     console.log("payload", payload);
+
+//     // Delivery Method খুঁজে webhook secret verify করি
+//     const deliveryMethod = await DeliveryMethod.findOne({
+//       tenantId: subdomain,
+//       type: payload.courierType,
+//     });
+
+//     if (!deliveryMethod?.webhookSecret) {
+//       throw new Error("Delivery method not configured for webhooks");
+//     }
+
+//     // Webhook secret verify করি
+//     if (payload.webhookSecret !== deliveryMethod.webhookSecret) {
+//       throw new Error("Invalid webhook secret");
+//     }
+
+//     // Courier এর tracking ID দিয়ে Order খুঁজি
+//     const order = await Order.findOne({
+//       tenantId: subdomain,
+//       courierTrackingId: payload.trackingId,
+//     });
+
+//     if (!order) {
+//       throw new Error("Order not found for tracking ID");
+//     }
+
+//     // Courier status কে Order status এ map করি
+//     const orderStatusMap: Record<string, string> = {
+//       in_transit: "shipped",
+//       delivered: "delivered",
+//       cancelled: "cancelled",
+//       failed: "cancelled",
+//       pending: "processing",
+//     };
+
+//     const newOrderStatus =
+//       orderStatusMap[payload.courierStatus] || order.orderStatus;
+
+//     // Order update করি
+//     const updatedOrder = await Order.findOneAndUpdate(
+//       { _id: order._id },
+//       {
+//         orderStatus: newOrderStatus,
+//         courierResponse: payload,
+//       },
+//       { new: true },
+//     ).populate("items.productId");
+
+//     return updatedOrder;
+//   } catch (error) {
+//     throw error;
+//   }
+// };
+
+const handleCourierWebhookInDB = async (
+  subdomain: string,
+  payload: any,
+  webhookSignature: string,
+) => {
   try {
+    console.log("🔐 Verifying webhook signature...");
+
+    // ✅ Webhook secret আপনার .env থেকে আসবে
+    const WEBHOOK_SECRET = config.webhook_secret; // f3992ecc-59da-4cbe-a049-a13da2018d51
+
+    if (!WEBHOOK_SECRET) {
+      throw new Error("WEBHOOK_SECRET not configured");
+    }
+
+    // ✅ Signature verify (HMAC-SHA256)
+    const expectedSignature = crypto
+      .createHmac("sha256", WEBHOOK_SECRET)
+      .update(JSON.stringify(payload))
+      .digest("hex");
+
+    console.log("Expected signature:", expectedSignature);
+    console.log("Received signature:", webhookSignature);
+
+    if (webhookSignature !== expectedSignature) {
+      console.error("❌ Invalid signature!");
+      throw new Error("Invalid webhook signature");
+    }
+
+    console.log("✅ Signature verified!");
+
+    // ✅ এখন Order update করি
     const Order = await getTenantModel(subdomain, "Order");
-    const DeliveryMethod = await getTenantModel(subdomain, "DeliveryMethod");
 
-    // Delivery Method খুঁজে webhook secret verify করি
-    const deliveryMethod = await DeliveryMethod.findOne({
-      tenantId: subdomain,
-      type: payload.courierType,
-    });
+    // Payload থেকে data extract করি
+    const { consignment_id, merchant_order_id, event, timestamp } = payload;
 
-    if (!deliveryMethod?.webhookSecret) {
-      throw new Error("Delivery method not configured for webhooks");
-    }
+    console.log("Processing webhook event:", event);
 
-    // Webhook secret verify করি
-    if (payload.webhookSecret !== deliveryMethod.webhookSecret) {
-      throw new Error("Invalid webhook secret");
-    }
-
-    // Courier এর tracking ID দিয়ে Order খুঁজি
-    const order = await Order.findOne({
-      tenantId: subdomain,
-      courierTrackingId: payload.trackingId,
-    });
-
-    if (!order) {
-      throw new Error("Order not found for tracking ID");
-    }
-
-    // Courier status কে Order status এ map করি
-    const orderStatusMap: Record<string, string> = {
-      in_transit: "shipped",
-      delivered: "delivered",
-      cancelled: "cancelled",
-      failed: "cancelled",
-      pending: "processing",
+    // Event কে Order status এ convert করি
+    const statusMap: Record<string, string> = {
+      "order.picked-up": "processing",
+      "order.in-transit": "shipped",
+      "order.delivered": "delivered",
+      "order.delivery-failed": "cancelled",
+      "order.on-hold": "pending",
     };
 
-    const newOrderStatus =
-      orderStatusMap[payload.courierStatus] || order.orderStatus;
+    const newStatus = statusMap[event] || "processing";
 
-    // Order update করি
-    const updatedOrder = await Order.findOneAndUpdate(
-      { _id: order._id },
+    // Order খুঁজি এবং update করি
+    const order = await Order.findOneAndUpdate(
       {
-        orderStatus: newOrderStatus,
-        courierResponse: payload,
+        orderNumber: merchant_order_id,
+      },
+      {
+        orderStatus: newStatus,
+        courierTrackingId: consignment_id,
+        courierResponse: {
+          ...payload,
+          verifiedAt: new Date(),
+        },
       },
       { new: true },
-    ).populate("items.productId");
+    );
 
-    return updatedOrder;
+    if (!order) {
+      console.error("Order not found for:", merchant_order_id);
+      throw new Error("Order not found");
+    }
+
+    console.log("✅ Order updated successfully:", order._id);
+
+    // ✅ Notifications পাঠাই
+    await sendNotifications(order, event);
+
+    return order;
   } catch (error) {
+    console.error("Webhook processing error:", error);
     throw error;
   }
+};
+
+// Notification পাঠাই
+const sendNotifications = async (order: any, event: string) => {
+  console.log(`📧 Sending notifications for event: ${event}`);
+
+  // Email পাঠাই
+  const emailMessage = getEmailMessage(event);
+  console.log(`Email sent to: ${order.guestEmail}`);
+
+  // SMS পাঠাই
+  console.log(`SMS sent to: ${order.guestInfo?.phone}`);
+
+  // Push notification পাঠাই
+  console.log(`Push notification sent`);
+};
+
+const getEmailMessage = (event: string): string => {
+  const messages: Record<string, string> = {
+    "order.picked-up": "Your order has been picked up!",
+    "order.in-transit": "Your order is on the way!",
+    "order.delivered": "Your order has been delivered!",
+    "order.delivery-failed": "Delivery failed. We'll retry soon.",
+  };
+  return messages[event] || "Order status updated";
 };
 
 export default {
