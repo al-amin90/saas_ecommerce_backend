@@ -3,6 +3,8 @@
 import axios from "axios";
 import NodeCache from "node-cache";
 import config from "../../../config";
+import { getTenantModel } from "../../../utils/getTenantModel";
+import { IDeliveryMethod } from "../deliveryMethod/deliveryMethod.interface";
 
 const tokenCache = new NodeCache({ stdTTL: 432000 });
 
@@ -33,8 +35,12 @@ class PathaoService {
   private password: string;
   private environment: "sandbox" | "live";
 
-  constructor(environment: "sandbox" | "live" = "sandbox") {
+  constructor(
+    environment: "sandbox" | "live" = "sandbox",
+    public subdomain: string,
+  ) {
     this.environment = environment;
+    this.subdomain = subdomain;
 
     // ✅ Config থেকে পাই
     if (environment === "sandbox") {
@@ -46,16 +52,39 @@ class PathaoService {
 
       console.log("🔧 Pathao Service initialized (SANDBOX)");
     } else {
+      // live এ placeholder — init() এ overwrite হবে
       this.baseUrl = config.pathao_live.base_url!;
-      this.clientId = config.pathao_live.client_id!;
-      this.clientSecret = config.pathao_live.client_secret!;
-      this.username = config.pathao_live.username!;
-      this.password = config.pathao_live.password!;
+      this.clientId = "";
+      this.clientSecret = "";
+      this.username = "";
+      this.password = "";
+    }
+  }
+
+  async init(): Promise<this> {
+    if (this.environment === "live") {
+      const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
+        this.subdomain,
+        "DeliveryMethod",
+      );
+
+      const deliveryMethod = await DeliveryMethod.findOne({ type: "PATHAO" });
+
+      if (!deliveryMethod) {
+        throw new Error("Pathao delivery method not configured");
+      }
+
+      this.clientId = deliveryMethod.clientId!;
+      this.clientSecret = deliveryMethod.clientSecret!;
+      this.username = deliveryMethod.clientEmail!;
+      this.password = deliveryMethod.clientPassword!;
 
       console.log("🔧 Pathao Service initialized (LIVE)");
+
+      this.validateConfig();
     }
 
-    this.validateConfig();
+    return this;
   }
 
   // ✅ Config validation

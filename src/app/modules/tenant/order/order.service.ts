@@ -427,7 +427,12 @@ const submitBulkOrdersToCourierInDB = async (
   }
 
   const environment = config.pathao_environment;
-  const pathaoService = new PathaoService(environment);
+
+  // this is for sandbox test
+  // const pathaoService = new PathaoService(environment, subdomain);
+
+  // this is for live
+  const pathaoService = await new PathaoService(environment, subdomain).init();
 
   // প্রতিটি order এর জন্য loop করি
   for (const orderId of orderIds) {
@@ -461,7 +466,7 @@ const submitBulkOrdersToCourierInDB = async (
 
       const response = await pathaoService.createOrder(
         parseInt(deliveryMethod.clientStoreId),
-        "307083",
+        deliveryMethod.merchantId,
         guestInfo.fullName,
         guestInfo.phone,
         guestInfo.address,
