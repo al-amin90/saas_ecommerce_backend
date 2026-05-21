@@ -1,7 +1,6 @@
-import mongoose from "mongoose";
+import { Server } from "http";
 import app from "./app";
 import config from "./app/config";
-import { Server } from "http";
 import { dbManager } from "./app/config/db";
 
 let server: Server;

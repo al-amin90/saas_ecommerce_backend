@@ -110,56 +110,10 @@ const deleteDeliveryMethod = catchAsync(
   },
 );
 
-const receiveCourierWebhook = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const subdomain = req.headers["x-tenant"] as string;
-
-    // ✅ Log করি যে webhook আসছে
-    console.log("🔔 Webhook Received:");
-    console.log("Headers:", req.headers);
-    console.log("Body:", req.body);
-
-    const payload = req.body;
-
-    // ✅ Webhook signature verify করি
-    const webhookSignature = req.headers["x-pathao-signature"] as string;
-    console.log("Signature received:", webhookSignature);
-
-    try {
-      const result = await deliveryMethodService.handleCourierWebhookInDB(
-        subdomain,
-        payload,
-        webhookSignature,
-      );
-
-      // ✅ 202 respond করি (Webhook requirement)
-      res.status(202).json({
-        success: true,
-        message: "Webhook received and processing",
-        data: result,
-        // ✅ Required header (Pathao requirement)
-        headers: {
-          "X-Pathao-Merchant-Webhook-Integration-Secret": config.webhook_secret,
-        },
-      });
-    } catch (error) {
-      console.error("❌ Webhook error:", error);
-
-      // ✅ Even on error, return 202 (Courier requirement)
-      res.status(202).json({
-        success: false,
-        message: "Webhook processing failed",
-        error: (error as Error).message,
-      });
-    }
-  },
-);
-
 export const deliveryMethodController = {
   createDeliveryMethod,
   getAllDeliveryMethods,
   getDeliveryMethodById,
   updateDeliveryMethod,
   deleteDeliveryMethod,
-  receiveCourierWebhook,
 };

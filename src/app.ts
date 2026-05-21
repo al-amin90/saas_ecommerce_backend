@@ -1,13 +1,11 @@
-import express, { Application } from "express";
-
 import cookieParser from "cookie-parser";
+import express, { Application } from "express";
 import cors from "cors";
+import router from "./app/routes";
+import config from "./app/config";
+import { extractPublicId } from "./app/utils/extractPublicId";
 import GlobalErrorHandler from "./app/middlewares/GlobalErrorHandler";
 import NotFound from "./app/middlewares/NotFound";
-import config from "./app/config";
-import router from "./app/routes";
-import { extractPublicId } from "./app/utils/extractPublicId";
-import { deleteFromCloudinary } from "./app/utils/cloudinary";
 
 const app: Application = express();
 

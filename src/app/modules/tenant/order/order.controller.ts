@@ -7,6 +7,7 @@ import catchAsync from "../../../utils/catchAsync";
 import sendResponse from "../../../utils/SendResponse";
 import orderService from "./order.service";
 import deliveryMethodService from "../deliveryMethod/deliveryMethod.service";
+import config from "../../../config";
 
 const createOrder = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -18,7 +19,7 @@ const createOrder = catchAsync(
     //   userId,
     //   req.body,
     // );
-    const result = await orderService.createAndSubmitOrderInDB(
+    const result = await orderService.createOrderIntoDB(
       subdomain,
       userId,
       req.body,
@@ -28,6 +29,50 @@ const createOrder = catchAsync(
       statusCode: status.CREATED,
       success: true,
       message: "Order created successfully",
+      data: result,
+    });
+  },
+);
+
+// ✅ Submit Single Order to Courier
+const submitSingleOrderToCourier = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { orderId } = req.body;
+
+    console.log("🚚 Submitting single order to courier...");
+
+    const result = await orderService.submitSingleOrderToCourierInDB(
+      subdomain,
+      orderId,
+    );
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Order submitted to courier successfully",
+      data: result,
+    });
+  },
+);
+
+// ✅ Submit Bulk Orders to Courier
+const submitBulkOrdersToCourier = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { orderIds, deliveryMethodId } = req.body;
+
+    console.log(`🚚 Submitting ${orderIds.length} orders to courier...`);
+
+    const result = await orderService.submitBulkOrdersToCourierInDB(
+      subdomain,
+      orderIds,
+    );
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Bulk orders submitted",
       data: result,
     });
   },
@@ -140,12 +185,60 @@ const getDashboardStats = catchAsync(
   },
 );
 
+const receivePathaoWebhook = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+
+    // ✅ Log করি যে webhook আসছে
+    console.log("🔔 Webhook Received:");
+    console.log("Headers:", req.headers);
+    console.log("Body:", req.body);
+
+    const payload = req.body;
+
+    // ✅ Webhook signature verify করি
+    const webhookSignature = req.headers["x-pathao-signature"] as string;
+    console.log("Signature received:", webhookSignature);
+
+    try {
+      const result = await orderService.handleCourierWebhookInDB(
+        subdomain,
+        payload,
+        webhookSignature,
+      );
+
+      // ✅ 202 respond করি (Webhook requirement)
+      res.status(202).json({
+        success: true,
+        message: "Webhook received and processing",
+        data: result,
+        // ✅ Required header (Pathao requirement)
+        headers: {
+          "X-Pathao-Merchant-Webhook-Integration-Secret": config.webhook_secret,
+        },
+      });
+    } catch (error) {
+      console.error("❌ Webhook error:", error);
+
+      // ✅ Even on error, return 202 (Courier requirement)
+      res.status(202).json({
+        success: false,
+        message: "Webhook processing failed",
+        error: (error as Error).message,
+      });
+    }
+  },
+);
+
 export const orderController = {
   createOrder,
+  submitSingleOrderToCourier,
+  submitBulkOrdersToCourier,
   getAllOrders,
   getOrderById,
   getGuestOrder,
   updateOrderStatus,
   cancelOrder,
   getDashboardStats,
+  receivePathaoWebhook,
 };

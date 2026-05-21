@@ -14,6 +14,18 @@ router.post(
   orderController.createOrder,
 );
 
+router.post(
+  "/submit-single",
+  validateRequest(orderValidations.submitSingleOrderSchema),
+  orderController.submitSingleOrderToCourier,
+);
+
+router.post(
+  "/submit-bulk",
+  validateRequest(orderValidations.submitBulkOrderSchema),
+  orderController.submitBulkOrdersToCourier,
+);
+
 router.get("/stats", orderController.getDashboardStats);
 router.get("/", orderController.getAllOrders);
 router.get("/guest", orderController.getGuestOrder);
@@ -25,5 +37,7 @@ router.patch(
   orderController.updateOrderStatus,
 );
 router.patch("/:orderId/cancel", orderController.cancelOrder);
+
+router.post("/webhook/pathao", orderController.receivePathaoWebhook);
 
 export const orderRouter = router;

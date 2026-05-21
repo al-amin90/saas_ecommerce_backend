@@ -4,15 +4,12 @@
   "description": "",
   "license": "ISC",
   "author": "",
-  "type": "commonjs",
+  "type": "module",
   "main": "index.js",
   "scripts": {
-    "build": "NODE_OPTIONS=--max-old-space-size=4096 tsc --incremental false",
+    "build": "tsc",
     "type-check": "tsc --noEmit",
-    "dev": "ts-node src/server.ts",
-    "start": "node dist/server.js",
-    "start:prod": "node ./dist/server.js",
-    "start:dev": "ts-node-dev --respawn --transpile-only ./src/server.ts",
+    "dev": "tsx watch ./src/server.ts",
     "lint": "eslint --ext .ts src/",
     "lint:fix": "eslint --fix --ext .ts src/",
     "prettier": "prettier --ignore-path .gitignore --write \"./src/**/*.ts\"",
@@ -36,11 +33,13 @@
     "node-cache": "^5.1.2",
     "slugify": "^1.6.9",
     "ts-node-dev": "^2.0.0",
+    "tsx": "^4.22.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
+    "@types/node": "^25.9.1",
     "prettier": "^3.8.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.2"

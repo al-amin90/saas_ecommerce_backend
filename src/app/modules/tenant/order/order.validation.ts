@@ -30,4 +30,22 @@ const createOrderSchema = z.object({
   }),
 });
 
-export const orderValidations = { createOrderSchema };
+const submitSingleOrderSchema = z.object({
+  body: z.object({
+    orderId: z.string().min(1, "Order ID is required"),
+    deliveryMethodId: z.string().min(1, "Delivery method ID is required"),
+  }),
+});
+
+const submitBulkOrderSchema = z.object({
+  body: z.object({
+    orderIds: z.array(z.string()).min(1, "At least one order ID is required"),
+    deliveryMethodId: z.string().min(1, "Delivery method ID is required"),
+  }),
+});
+
+export const orderValidations = {
+  createOrderSchema,
+  submitSingleOrderSchema,
+  submitBulkOrderSchema,
+};
