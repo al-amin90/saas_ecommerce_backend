@@ -396,6 +396,7 @@ const submitBulkOrdersToCourierInDB = async (
     subdomain,
     "DeliveryMethod",
   );
+  await getTenantModel(subdomain, "Product");
 
   const results = {
     successful: [] as any[],
@@ -460,7 +461,7 @@ const submitBulkOrdersToCourierInDB = async (
 
       const response = await pathaoService.createOrder(
         parseInt(deliveryMethod.clientStoreId),
-        order.orderNumber,
+        "307083",
         guestInfo.fullName,
         guestInfo.phone,
         guestInfo.address,
@@ -472,6 +473,8 @@ const submitBulkOrdersToCourierInDB = async (
           .map((i: any) => i.productId?.name || "Product")
           .join(", ")}`,
       );
+
+      console.log("response", response);
 
       // Order Update করি
       const updatedOrder = await Order.findByIdAndUpdate(
@@ -511,6 +514,11 @@ const submitBulkOrdersToCourierInDB = async (
         orderNumber: order?.orderNumber || "Unknown",
         error: error.message,
       });
+
+      throw new AppError(
+        status.BAD_REQUEST,
+        `${order?.orderNumber} is ${error.message}` || `Something Went Wrong`,
+      );
     } finally {
       await session.endSession();
     }

@@ -60,7 +60,7 @@ const submitSingleOrderToCourier = catchAsync(
 const submitBulkOrdersToCourier = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const subdomain = req.headers["x-tenant"] as string;
-    const { orderIds, deliveryMethodId } = req.body;
+    const { orderIds } = req.body;
 
     console.log(`🚚 Submitting ${orderIds.length} orders to courier...`);
 

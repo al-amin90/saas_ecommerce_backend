@@ -40,7 +40,6 @@ const submitSingleOrderSchema = z.object({
 const submitBulkOrderSchema = z.object({
   body: z.object({
     orderIds: z.array(z.string()).min(1, "At least one order ID is required"),
-    deliveryMethodId: z.string().min(1, "Delivery method ID is required"),
   }),
 });
 

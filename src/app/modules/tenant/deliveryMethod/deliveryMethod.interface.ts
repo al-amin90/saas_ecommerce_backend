@@ -14,6 +14,7 @@ export interface IDeliveryMethod extends Document {
   clientEmail: string;
   clientPassword: string;
   clientStoreId: string;
+  merchantId: string;
 
   // Default shipping note
   defaultShippingNote?: string;

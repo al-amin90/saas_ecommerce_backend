@@ -45,6 +45,10 @@ const deliveryMethodSchema = new Schema<IDeliveryMethod>(
       required: true,
       trim: true,
     },
+    merchantId: {
+      type: String,
+      trim: true,
+    },
     defaultShippingNote: {
       type: String,
       default: "",
