@@ -15,6 +15,7 @@ export const variantSchema = new Schema<TVariant>({
 export const productSchema = new Schema<TProduct>(
   {
     name: { type: String, required: true },
+    description: { type: String },
     slug: { type: String, required: true, unique: true },
 
     price: { type: Number, required: true },
