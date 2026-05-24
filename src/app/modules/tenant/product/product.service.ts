@@ -26,11 +26,15 @@ const getAllProductsFromDB = async (
 ) => {
   const Product = await getTenantModel(subdomain, "Product");
   await getTenantModel(subdomain, "Category");
+  await getTenantModel(subdomain, "Color");
 
   const searchFields = ["name", "description", "sku"];
 
   const builder = new QueryBuilder(
-    Product.find({ isDeleted: false }).populate("categoryID", "name slug"),
+    Product.find({ isDeleted: false }).populate([
+      { path: "categoryID", select: "name slug" },
+      { path: "variant.color", select: "name color" },
+    ]),
     query,
   )
     .search(searchFields)

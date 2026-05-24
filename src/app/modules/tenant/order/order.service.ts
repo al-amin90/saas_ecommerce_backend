@@ -540,12 +540,16 @@ const getAllOrdersFromDB = async (subdomain: string) => {
   try {
     const Order = await getTenantModel(subdomain, "Order");
     await getTenantModel(subdomain, "Product");
+    await getTenantModel(subdomain, "Color");
 
     // যদি authenticated user থাকে, তার orders দেখাবে
     // যদি admin থাকে, সব orders দেখাবে (তার permission থাকলে)
 
     const orders = await Order.find()
-      .populate("items.productId", "name price images")
+      .populate([
+        { path: "items.productId", select: "name price images" },
+        { path: "items.colorId", select: "name color" },
+      ])
       .sort({ createdAt: -1 });
     // .populate("userId", "name email")
 
