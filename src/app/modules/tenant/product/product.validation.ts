@@ -22,9 +22,12 @@ const variantSchema = z.object({
 const baseProductSchema = z.object({
   name: z.string({ message: "Name is required" }).min(1),
   description: z.string().optional(),
-  price: z.number({ message: "Price is required" }).min(1),
-  discountPrice: z.number().optional(),
-  originalPrice: z.number().optional(),
+  price: z.preprocess(
+    Number,
+    z.number({ message: "Price is required" }).min(1),
+  ),
+  discountPrice: z.preprocess(Number, z.number()),
+  originalPrice: z.preprocess(Number, z.number()),
   categoryID: z.string({ message: "Category ID is required" }).min(1),
   variant: z
     .string()
