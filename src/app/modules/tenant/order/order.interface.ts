@@ -6,8 +6,7 @@ export interface IOrderItem {
   productId: Types.ObjectId;
   quantity: number;
   selectedSize: string;
-  selectedColor: string;
-  colorId?: Types.ObjectId;
+  colorId: Types.ObjectId;
   price: number;
 }
 

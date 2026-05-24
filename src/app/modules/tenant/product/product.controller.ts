@@ -102,9 +102,10 @@ const updateProduct = catchAsync(async (req, res, next) => {
     req.body.variant = JSON.parse(req.body.variant);
   }
 
-  if (req.body.existingImages && typeof req.body.existingImages === "string") {
-    req.body.existingImages = JSON.parse(req.body.existingImages);
-    console.log("i am inside existingImages", req.body.existingImages);
+  if (req.body.existingImages) {
+    req.body.existingImages = Array.isArray(req.body.existingImages)
+      ? req.body.existingImages
+      : [req.body.existingImages];
   }
 
   const files = req.files as Express.Multer.File[];
