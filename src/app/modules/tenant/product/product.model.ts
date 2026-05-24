@@ -18,7 +18,8 @@ export const productSchema = new Schema<TProduct>(
     slug: { type: String, required: true, unique: true },
 
     price: { type: Number, required: true },
-    discountPrice: { type: Number, required: true },
+    discountPrice: { type: Number },
+    originalPrice: { type: Number },
     categoryID: { type: Schema.Types.ObjectId, ref: "Category" },
 
     variant: [variantSchema],

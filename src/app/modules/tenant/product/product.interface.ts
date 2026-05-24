@@ -19,6 +19,7 @@ export type TProduct = {
 
   price: number;
   discountPrice?: number;
+  originalPrice?: number;
   categoryID: Types.ObjectId;
 
   variant: TVariant[];

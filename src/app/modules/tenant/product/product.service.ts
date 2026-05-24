@@ -101,9 +101,12 @@ const updateProductInDB = async (
   delete payload.existingImages;
 
   const newImageUrl: string[] = [];
-  for (const file of files) {
-    const url = await uploadOnCloudinary(file.path, "products", subdomain);
-    if (url) newImageUrl.push(url);
+
+  if (files) {
+    for (const file of files) {
+      const url = await uploadOnCloudinary(file.path, "products", subdomain);
+      if (url) newImageUrl.push(url);
+    }
   }
 
   const dbImg = product.images ?? [];
