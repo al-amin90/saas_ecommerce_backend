@@ -233,21 +233,24 @@ const receivePathaoWebhook = catchAsync(
 const getRevenueReport = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const subdomain = req.headers["x-tenant"] as string;
-    const { type, years, months } = req.query;
+    const { type, years, months, startDate, endDate } = req.query;
 
     const parsedYears = years
       ? String(years).split(",").map(Number)
       : undefined;
-
     const parsedMonths = months
       ? String(months).split(",").map(Number)
       : undefined;
 
+    console.log("parsedMonths", parsedMonths);
+
     const result = await orderService.getRevenueReportFromDB(
       subdomain,
-      (type as "monthly" | "yearly") ?? "monthly",
+      (type as "monthly" | "yearly" | "daily") ?? "monthly",
       parsedYears,
       parsedMonths,
+      startDate as string | undefined,
+      endDate as string | undefined,
     );
 
     sendResponse(res, {

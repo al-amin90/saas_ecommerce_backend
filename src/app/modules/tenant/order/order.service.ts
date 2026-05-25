@@ -715,14 +715,11 @@ const updateOrderStatusInDB = async (
 
     const updatedOrder = await Order.findOneAndUpdate(
       {
-        tenantId: subdomain,
         _id: new Types.ObjectId(orderId),
       },
       { $set: updateData },
       { new: true, session, runValidators: true },
-    )
-      .populate("items.productId")
-      .populate("deliveryMethodId");
+    ).populate("items.productId");
 
     await session.commitTransaction();
     console.log("✅ Order status updated successfully");
@@ -860,38 +857,103 @@ const getDashboardStatsFromDB = async (subdomain: string) => {
 
 const getRevenueReportFromDB = async (
   subdomain: string,
-  type: "monthly" | "yearly",
+  type: "monthly" | "yearly" | "daily",
   years?: number[],
   months?: number[],
+  startDate?: string,
+  endDate?: string,
 ) => {
   try {
     const Order = await getTenantModel(subdomain, "Order");
+    await getTenantModel(subdomain, "Product");
 
-    // শুধু delivered orders count করবো
     const matchQuery: any = {
-      orderStatus: { $in: ["delivered"] }, //"processing", "shipped"
+      orderStatus: { $in: ["delivered", "processing", "shipped"] },
     };
+
+    // date range filter
+    if (startDate && endDate) {
+      matchQuery.createdAt = {
+        $gte: new Date(startDate),
+        $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999)),
+      };
+    }
 
     const orders = await Order.find(matchQuery).populate(
       "items.productId",
       "price discountPrice originalPrice name",
     );
 
-    // profit calculation helper
+    console.log("orders", orders);
+
     const calcProfit = (item: any) => {
       const product = item.productId;
       if (!product) return 0;
-      const revenue = item.price * item.quantity;
-      const cost = (product.originalPrice ?? 0) * item.quantity;
-      return revenue - cost;
+      return (item.price - (product.originalPrice ?? 0)) * item.quantity;
     };
 
     const calcRevenue = (item: any) => item.price * item.quantity;
 
-    if (type === "monthly") {
-      // নির্দিষ্ট year এর month wise data
-      const targetYear = years?.[0] ?? new Date().getFullYear();
+    // ── Daily ────────────────────────────────────────────────────────────────
+    if (type === "daily" && startDate && endDate) {
+      const dailyData: Record<
+        string,
+        { revenue: number; profit: number; orders: number }
+      > = {};
 
+      // start থেকে end পর্যন্ত সব date initialize করো
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const current = new Date(start);
+
+      while (current <= end) {
+        const key = current.toISOString().split("T")[0];
+        dailyData[key] = { revenue: 0, profit: 0, orders: 0 };
+        current.setDate(current.getDate() + 1);
+      }
+
+      orders.forEach((order: any) => {
+        const key = new Date(order.createdAt).toISOString().split("T")[0];
+        if (!dailyData[key]) return;
+
+        order.items.forEach((item: any) => {
+          dailyData[key].revenue += calcRevenue(item);
+          dailyData[key].profit += calcProfit(item);
+        });
+        dailyData[key].orders += 1;
+      });
+
+      const result = Object.entries(dailyData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([date, val]) => ({
+          label: date,
+          displayLabel: new Date(date).toLocaleDateString("en-BD", {
+            month: "short",
+            day: "numeric",
+          }),
+          revenue: Math.round(val.revenue),
+          profit: Math.round(val.profit),
+          orders: val.orders,
+        }));
+
+      const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
+      const totalProfit = result.reduce((s, r) => s + r.profit, 0);
+      const totalOrders = result.reduce((s, r) => s + r.orders, 0);
+
+      return {
+        type: "daily",
+        startDate,
+        endDate,
+        data: result,
+        totalRevenue,
+        totalProfit,
+        totalOrders,
+      };
+    }
+
+    // ── Monthly ───────────────────────────────────────────────────────────────
+    if (type === "monthly") {
+      const targetYear = years?.[0] ?? new Date().getFullYear();
       const MONTHS = [
         "Jan",
         "Feb",
@@ -917,28 +979,24 @@ const getRevenueReportFromDB = async (
 
       orders.forEach((order: any) => {
         const orderDate = new Date(order.createdAt);
-        const orderYear = orderDate.getFullYear();
-        const orderMonth = orderDate.getMonth(); // 0-indexed
-
-        if (orderYear !== targetYear) return;
-
-        // month filter
+        if (orderDate.getFullYear() !== targetYear) return;
+        const orderMonth = orderDate.getMonth();
         if (months && months.length > 0 && !months.includes(orderMonth + 1))
           return;
 
-        const monthKey = MONTHS[orderMonth];
+        const key = MONTHS[orderMonth];
         order.items.forEach((item: any) => {
-          monthlyData[monthKey].revenue += calcRevenue(item);
-          monthlyData[monthKey].profit += calcProfit(item);
+          monthlyData[key].revenue += calcRevenue(item);
+          monthlyData[key].profit += calcProfit(item);
         });
-        monthlyData[monthKey].orders += 1;
+        monthlyData[key].orders += 1;
       });
 
-      const result = MONTHS.filter((m) => {
-        if (!months || months.length === 0) return true;
-        return months.includes(MONTHS.indexOf(m) + 1);
-      }).map((month) => ({
+      const result = MONTHS.filter(
+        (m) => !months?.length || months.includes(MONTHS.indexOf(m) + 1),
+      ).map((month) => ({
         label: month,
+        displayLabel: month,
         revenue: Math.round(monthlyData[month].revenue),
         profit: Math.round(monthlyData[month].profit),
         orders: monthlyData[month].orders,
@@ -958,26 +1016,21 @@ const getRevenueReportFromDB = async (
       };
     }
 
+    // ── Yearly ────────────────────────────────────────────────────────────────
     if (type === "yearly") {
-      // multiple years
       const yearlyData: Record<
         number,
         { revenue: number; profit: number; orders: number }
       > = {};
-
-      if (years && years.length > 0) {
-        years.forEach((y) => {
-          yearlyData[y] = { revenue: 0, profit: 0, orders: 0 };
-        });
-      }
+      years?.forEach((y) => {
+        yearlyData[y] = { revenue: 0, profit: 0, orders: 0 };
+      });
 
       orders.forEach((order: any) => {
         const orderYear = new Date(order.createdAt).getFullYear();
-        if (years && years.length > 0 && !years.includes(orderYear)) return;
-
-        if (!yearlyData[orderYear]) {
+        if (years?.length && !years.includes(orderYear)) return;
+        if (!yearlyData[orderYear])
           yearlyData[orderYear] = { revenue: 0, profit: 0, orders: 0 };
-        }
 
         order.items.forEach((item: any) => {
           yearlyData[orderYear].revenue += calcRevenue(item);
@@ -990,6 +1043,7 @@ const getRevenueReportFromDB = async (
         .sort(([a], [b]) => Number(a) - Number(b))
         .map(([year, val]) => ({
           label: year,
+          displayLabel: String(year),
           revenue: Math.round(val.revenue),
           profit: Math.round(val.profit),
           orders: val.orders,
