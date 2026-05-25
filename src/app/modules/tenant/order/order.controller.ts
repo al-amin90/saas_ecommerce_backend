@@ -230,6 +230,35 @@ const receivePathaoWebhook = catchAsync(
   },
 );
 
+const getRevenueReport = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { type, years, months } = req.query;
+
+    const parsedYears = years
+      ? String(years).split(",").map(Number)
+      : undefined;
+
+    const parsedMonths = months
+      ? String(months).split(",").map(Number)
+      : undefined;
+
+    const result = await orderService.getRevenueReportFromDB(
+      subdomain,
+      (type as "monthly" | "yearly") ?? "monthly",
+      parsedYears,
+      parsedMonths,
+    );
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Revenue report retrieved successfully",
+      data: result,
+    });
+  },
+);
+
 export const orderController = {
   createOrder,
   submitSingleOrderToCourier,
@@ -241,4 +270,5 @@ export const orderController = {
   cancelOrder,
   getDashboardStats,
   receivePathaoWebhook,
+  getRevenueReport,
 };

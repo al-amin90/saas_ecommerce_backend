@@ -858,6 +858,160 @@ const getDashboardStatsFromDB = async (subdomain: string) => {
   }
 };
 
+const getRevenueReportFromDB = async (
+  subdomain: string,
+  type: "monthly" | "yearly",
+  years?: number[],
+  months?: number[],
+) => {
+  try {
+    const Order = await getTenantModel(subdomain, "Order");
+
+    // শুধু delivered orders count করবো
+    const matchQuery: any = {
+      orderStatus: { $in: ["delivered"] }, //"processing", "shipped"
+    };
+
+    const orders = await Order.find(matchQuery).populate(
+      "items.productId",
+      "price discountPrice originalPrice name",
+    );
+
+    // profit calculation helper
+    const calcProfit = (item: any) => {
+      const product = item.productId;
+      if (!product) return 0;
+      const revenue = item.price * item.quantity;
+      const cost = (product.originalPrice ?? 0) * item.quantity;
+      return revenue - cost;
+    };
+
+    const calcRevenue = (item: any) => item.price * item.quantity;
+
+    if (type === "monthly") {
+      // নির্দিষ্ট year এর month wise data
+      const targetYear = years?.[0] ?? new Date().getFullYear();
+
+      const MONTHS = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      const monthlyData: Record<
+        string,
+        { revenue: number; profit: number; orders: number }
+      > = {};
+      MONTHS.forEach((m) => {
+        monthlyData[m] = { revenue: 0, profit: 0, orders: 0 };
+      });
+
+      orders.forEach((order: any) => {
+        const orderDate = new Date(order.createdAt);
+        const orderYear = orderDate.getFullYear();
+        const orderMonth = orderDate.getMonth(); // 0-indexed
+
+        if (orderYear !== targetYear) return;
+
+        // month filter
+        if (months && months.length > 0 && !months.includes(orderMonth + 1))
+          return;
+
+        const monthKey = MONTHS[orderMonth];
+        order.items.forEach((item: any) => {
+          monthlyData[monthKey].revenue += calcRevenue(item);
+          monthlyData[monthKey].profit += calcProfit(item);
+        });
+        monthlyData[monthKey].orders += 1;
+      });
+
+      const result = MONTHS.filter((m) => {
+        if (!months || months.length === 0) return true;
+        return months.includes(MONTHS.indexOf(m) + 1);
+      }).map((month) => ({
+        label: month,
+        revenue: Math.round(monthlyData[month].revenue),
+        profit: Math.round(monthlyData[month].profit),
+        orders: monthlyData[month].orders,
+      }));
+
+      const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
+      const totalProfit = result.reduce((s, r) => s + r.profit, 0);
+      const totalOrders = result.reduce((s, r) => s + r.orders, 0);
+
+      return {
+        type: "monthly",
+        year: targetYear,
+        data: result,
+        totalRevenue,
+        totalProfit,
+        totalOrders,
+      };
+    }
+
+    if (type === "yearly") {
+      // multiple years
+      const yearlyData: Record<
+        number,
+        { revenue: number; profit: number; orders: number }
+      > = {};
+
+      if (years && years.length > 0) {
+        years.forEach((y) => {
+          yearlyData[y] = { revenue: 0, profit: 0, orders: 0 };
+        });
+      }
+
+      orders.forEach((order: any) => {
+        const orderYear = new Date(order.createdAt).getFullYear();
+        if (years && years.length > 0 && !years.includes(orderYear)) return;
+
+        if (!yearlyData[orderYear]) {
+          yearlyData[orderYear] = { revenue: 0, profit: 0, orders: 0 };
+        }
+
+        order.items.forEach((item: any) => {
+          yearlyData[orderYear].revenue += calcRevenue(item);
+          yearlyData[orderYear].profit += calcProfit(item);
+        });
+        yearlyData[orderYear].orders += 1;
+      });
+
+      const result = Object.entries(yearlyData)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([year, val]) => ({
+          label: year,
+          revenue: Math.round(val.revenue),
+          profit: Math.round(val.profit),
+          orders: val.orders,
+        }));
+
+      const totalRevenue = result.reduce((s, r) => s + r.revenue, 0);
+      const totalProfit = result.reduce((s, r) => s + r.profit, 0);
+      const totalOrders = result.reduce((s, r) => s + r.orders, 0);
+
+      return {
+        type: "yearly",
+        data: result,
+        totalRevenue,
+        totalProfit,
+        totalOrders,
+      };
+    }
+  } catch (error) {
+    throw error;
+  }
+};
+
 // ✅ Webhook handler
 const handleCourierWebhookInDB = async (
   subdomain: string,
@@ -934,4 +1088,5 @@ export default {
   cancelOrderInDB,
   getDashboardStatsFromDB,
   handleCourierWebhookInDB,
+  getRevenueReportFromDB,
 };

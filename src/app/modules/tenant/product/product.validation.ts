@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const stockSchema = z.object({
   size: z.number({ message: "Size is required" }).min(0),
-  quantity: z.number({ message: "Quantity is required" }).min(0),
+  quantity: z.number(),
 });
 
 const variantSchema = z.object({

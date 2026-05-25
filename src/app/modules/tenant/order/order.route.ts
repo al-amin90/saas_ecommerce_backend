@@ -39,5 +39,6 @@ router.patch(
 router.patch("/:orderId/cancel", orderController.cancelOrder);
 
 router.post("/webhook/pathao", orderController.receivePathaoWebhook);
+router.get("/report/revenue", orderController.getRevenueReport);
 
 export const orderRouter = router;
