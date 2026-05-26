@@ -4,13 +4,21 @@ import { userServices } from "./user.service";
 
 const createUser = async (req: Request, res: Response) => {
   const subdomain = req.headers["x-tenant"] as string;
-  const result = await userServices.registerUserIntoDB(subdomain, req.body);
+
+  const { accessToken, refreshToken, user } =
+    await userServices.registerUserIntoDB(subdomain, req.body);
+
+  res.cookie("refreshToken", refreshToken, {
+    secure: false,
+    httpOnly: true,
+    sameSite: "lax",
+  });
 
   sendResponse(res, {
     statusCode: 200,
     success: true,
     message: "User Created Successfully",
-    data: result,
+    data: { accessToken, user },
   });
 };
 

@@ -6,8 +6,9 @@ export const userZodSchema = z.object({
     .max(20, { message: "Password cant not be more than 20" }),
 });
 export const registerValidator = z.object({
-  email: z.string().email(),
-  password: z.string(),
-
-  role: z.enum(["admin", "moderator", "user", "super_admin"]).default("user"),
+  body: z.object({
+    email: z.string().email(),
+    password: z.string(),
+    role: z.enum(["admin", "moderator", "user", "super_admin"]).default("user"),
+  }),
 });
