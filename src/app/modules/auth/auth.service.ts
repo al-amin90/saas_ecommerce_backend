@@ -151,7 +151,7 @@ const handleSingleTenantLogin = async (email: string, password: string) => {
   }
 
   if (!(await UserModel.isPasswordMatch(password, user.password))) {
-    throw new AppError(status.FORBIDDEN, "Invalid credentials");
+    throw new AppError(401, "Invalid credentials");
   }
 
   const jwtPayload = {
@@ -266,7 +266,7 @@ const handleMultiTenantLoginAutoDetect = async (
   }
 
   if (!(await UserModel.isPasswordMatch(password, user.password))) {
-    throw new AppError(status.FORBIDDEN, "Invalid Credential");
+    throw new AppError(401, "Invalid Credential");
   }
 
   const jwtPayload = {
