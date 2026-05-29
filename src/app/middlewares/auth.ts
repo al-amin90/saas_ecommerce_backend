@@ -19,10 +19,25 @@ const auth = (...requiredRoles: TUserRole[]) => {
     const token = authHeader && authHeader.split(" ")[1];
 
     if (!token) {
-      throw new AppError(status.FORBIDDEN, "Access token required");
+      throw new AppError(status.UNAUTHORIZED, "Access token required");
     }
 
-    const decoded = jwt.verify(token, config.jwt.access_token as string);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, config.jwt.access_token as string);
+    } catch (error) {
+      if (error instanceof jwt.TokenExpiredError) {
+        throw new AppError(
+          status.UNAUTHORIZED,
+          "Session expired, please login again",
+        );
+      }
+      if (error instanceof jwt.JsonWebTokenError) {
+        throw new AppError(status.UNAUTHORIZED, "Invalid token");
+      }
+      throw error;
+    }
+
     const { id, iat, email, role, subdomain } = decoded as JwtPayload;
 
     if (role === "super_admin") {
@@ -47,7 +62,7 @@ const auth = (...requiredRoles: TUserRole[]) => {
     console.log("user", user);
 
     if (!user) {
-      throw new AppError(status.FORBIDDEN, "The User doesn't exist");
+      throw new AppError(status.UNAUTHORIZED, "The User doesn't exist");
     }
 
     if (!user.isActive) {
@@ -62,7 +77,7 @@ const auth = (...requiredRoles: TUserRole[]) => {
     }
 
     if (requiredRoles && !requiredRoles.includes(role)) {
-      throw new AppError(status.UNAUTHORIZED, "You are not authorized. hi!");
+      throw new AppError(status.FORBIDDEN, "You are not authorized. hi!");
     }
 
     req.user = decoded as JwtPayload;

@@ -13,14 +13,14 @@ router.post(
   validateRequest(colorValidations.createColorSchema),
   colorControllers.createColor,
 );
-router.get("/", auth("admin"), colorControllers.getAllColor);
-router.get("/:id", auth("admin"), colorControllers.getSingleColor);
+router.get("/", colorControllers.getAllColor);
+router.get("/:id", colorControllers.getSingleColor);
 router.patch(
   "/:id",
   auth("admin"),
   validateRequest(colorValidations.updateCategorySchema),
   colorControllers.updateColor,
 );
-router.delete("/:id", auth("admin"), colorControllers.deleteColor);
+router.delete("/:id", colorControllers.deleteColor);
 
 export const colorRouter = router;
