@@ -7,6 +7,7 @@ const stockSchema = z.object({
 
 const variantSchema = z.object({
   color: z.string({ message: "Color is required" }).min(1),
+  imageIndex: z.number({ message: "Select the image of Color" }).min(0),
   stock: z
     .array(stockSchema)
     .min(1, { message: "At least one stock entry is required" })

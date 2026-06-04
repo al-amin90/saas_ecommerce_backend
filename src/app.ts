@@ -16,6 +16,8 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000",
+      "https://kidshutbd.com",
+      "https://saas-ecommerce-frontend-omega.vercel.app",
       /\.localhost:\d{4}$/, // Matches alamin.localhost:3000, any.localhost:3000
     ],
     credentials: true,

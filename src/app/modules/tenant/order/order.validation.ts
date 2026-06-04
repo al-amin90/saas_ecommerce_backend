@@ -22,7 +22,7 @@ export const guestInfoSchema = z.object({
 const createOrderSchema = z.object({
   body: z.object({
     guestCheckout: z.boolean(),
-    guestEmail: z.string().email("Invalid email").optional(),
+    guestEmail: z.union([z.string().email(), z.literal("")]).optional(),
     guestInfo: guestInfoSchema.optional(),
     items: z.array(orderItemSchema).min(1, "At least one item is required"),
     totalPrice: z.number().min(0, "Total price must be positive"),

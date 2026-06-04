@@ -49,7 +49,7 @@ const loginUser = catchAsync(async (req, res, next) => {
   sendResponse(res, {
     statusCode: status.OK,
     success: true,
-    message: "User is logged in Successfully",
+    message: "User is logged in Successfully!",
     data: {
       accessToken,
       //   needsPasswordChange,

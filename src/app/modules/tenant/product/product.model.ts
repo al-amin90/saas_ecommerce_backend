@@ -4,6 +4,7 @@ import { TProduct, TVariant } from "./product.interface";
 
 export const variantSchema = new Schema<TVariant>({
   color: { type: Schema.Types.ObjectId, ref: "Color" },
+  imageIndex: Number,
   stock: [
     {
       size: { type: Number, required: true, min: 0 },
