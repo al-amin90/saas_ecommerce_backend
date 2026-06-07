@@ -55,6 +55,7 @@ const getSingleProductFromDB = async (subdomain: string, id: string) => {
   const Product = await getTenantModel(subdomain, "Product");
   await getTenantModel(subdomain, "Category");
   await getTenantModel(subdomain, "Color");
+  await getTenantModel(subdomain, "SizeChart");
 
   const result = await Product.findOne({
     _id: id,
@@ -63,6 +64,7 @@ const getSingleProductFromDB = async (subdomain: string, id: string) => {
     .populate([
       { path: "categoryID", select: "name slug" },
       { path: "variant.color", select: "name color" },
+      { path: "sizeChartId" },
     ])
     .lean<TProduct>();
 

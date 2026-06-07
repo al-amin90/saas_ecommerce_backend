@@ -27,6 +27,7 @@ export type TProduct = {
 
   images: string[];
   existingImages?: string[];
+  sizeChartId: Types.ObjectId;
 
   sku: string;
 

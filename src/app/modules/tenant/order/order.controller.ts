@@ -83,13 +83,24 @@ const getAllOrders = catchAsync(
     const subdomain = req.headers["x-tenant"] as string;
     const userId = req.user?._id; // if authenticated
 
-    const result = await orderService.getAllOrdersFromDB(subdomain, userId);
+    const { page, limit, orderStatus, paymentStatus, sortBy, sortOrder } =
+      req.query;
+
+    const result = await orderService.getAllOrdersFromDB(subdomain, {
+      page: page ? Number(page) : 1,
+      limit: limit ? Number(limit) : 10,
+      orderStatus: orderStatus as string,
+      paymentStatus: paymentStatus as string,
+      sortBy: sortBy as string,
+      sortOrder: sortOrder as "asc" | "desc",
+    });
 
     sendResponse(res, {
       statusCode: status.OK,
       success: true,
       message: "All orders retrieved successfully",
-      data: result,
+      data: result.orders,
+      meta: result.meta,
     });
   },
 );

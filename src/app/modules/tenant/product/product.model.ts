@@ -29,6 +29,11 @@ export const productSchema = new Schema<TProduct>(
     images: [{ type: String, required: true }],
 
     sku: { type: String, unique: true },
+    sizeChartId: {
+      type: Schema.Types.ObjectId,
+      ref: "SizeChart",
+      default: null,
+    },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
   },

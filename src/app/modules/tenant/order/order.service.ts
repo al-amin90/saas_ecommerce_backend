@@ -535,25 +535,83 @@ const submitBulkOrdersToCourierInDB = async (
 
   return results;
 };
-
-const getAllOrdersFromDB = async (subdomain: string) => {
+const getAllOrdersFromDB = async (
+  subdomain: string,
+  query: {
+    page?: number;
+    limit?: number;
+    orderStatus?: string;
+    paymentStatus?: string;
+    sortBy?: string;
+    sortOrder?: "asc" | "desc";
+  },
+) => {
   try {
     const Order = await getTenantModel(subdomain, "Order");
     await getTenantModel(subdomain, "Product");
     await getTenantModel(subdomain, "Color");
 
-    // যদি authenticated user থাকে, তার orders দেখাবে
-    // যদি admin থাকে, সব orders দেখাবে (তার permission থাকলে)
+    const {
+      page = 1,
+      limit = 10,
+      orderStatus = "pending",
+      paymentStatus,
+      sortBy = "createdAt",
+      sortOrder = "desc",
+    } = query;
 
-    const orders = await Order.find()
-      .populate([
-        { path: "items.productId", select: "name price images" },
-        { path: "items.colorId", select: "name color" },
-      ])
-      .sort({ createdAt: -1 });
-    // .populate("userId", "name email")
+    const skip = (page - 1) * limit;
 
-    return orders;
+    // ── Filter ──────────────────────────────────────────────────────────────
+    const filter: any = {};
+    if (orderStatus && orderStatus !== "all") filter.orderStatus = orderStatus;
+    if (paymentStatus && paymentStatus !== "all")
+      filter.paymentStatus = paymentStatus;
+
+    // ── Sort ─────────────────────────────────────────────────────────────────
+    const sort: any = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
+    // ── Queries parallel ─────────────────────────────────────────────────────
+    const [orders, total, statusCounts] = await Promise.all([
+      Order.find(filter)
+        .populate([
+          { path: "items.productId", select: "name price images" },
+          { path: "items.colorId", select: "name color" },
+        ])
+        .sort(sort)
+        .skip(skip)
+        .limit(limit),
+
+      Order.countDocuments(filter),
+
+      // meta — সব status count (filter ছাড়া)
+      Order.aggregate([
+        { $group: { _id: "$orderStatus", count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    // aggregate result কে flat object এ convert
+    const statusMap: Record<string, number> = {
+      pending: 0,
+      processing: 0,
+      shipped: 0,
+      delivered: 0,
+      cancelled: 0,
+    };
+    statusCounts.forEach((s: any) => {
+      if (statusMap[s._id] !== undefined) statusMap[s._id] = s.count;
+    });
+
+    return {
+      orders,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPage: Math.ceil(total / limit),
+        ...statusMap,
+      },
+    };
   } catch (error) {
     throw error;
   }
