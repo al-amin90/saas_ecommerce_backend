@@ -8,7 +8,6 @@ export default {
   port: process.env.PORT,
 
   bcrypt_salt_rounds: process.env.BCRYPT_SALT_ROUNDS,
-  default_password: process.env.DEFAULT_PASSWORD,
 
   single_admin_email: process.env.SINGLE_ADMIN_EMAIL,
   single_admin_password: process.env.SINGLE_ADMIN_PASSWORD,

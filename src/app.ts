@@ -48,6 +48,6 @@ console.log(
 );
 
 app.use(GlobalErrorHandler);
-app.use(NotFound);
+// app.use(NotFound);
 
 export default app;

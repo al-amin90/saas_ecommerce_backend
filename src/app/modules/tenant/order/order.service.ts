@@ -4,7 +4,7 @@ import config from "../../../config";
 import { getTenantModel } from "../../../utils/getTenantModel";
 import PathaoService from "../courier/pathao.service";
 import { IDeliveryMethod } from "../deliveryMethod/deliveryMethod.interface";
-import { IOrder } from "./order.interface";
+import { DateRange, IOrder } from "./order.interface";
 
 import { Types } from "mongoose";
 import stockValidationService from "./stockValidation.service";
@@ -16,6 +16,15 @@ import {
   VALID_STATUS_TRANSITIONS,
 } from "./order.const";
 import { TProduct } from "../product/product.interface";
+import {
+  startOfDay,
+  endOfDay,
+  subDays,
+  subMonths,
+  subYears,
+  startOfYear,
+  startOfMonth,
+} from "date-fns";
 
 // ✅ Combined: Create Order + Submit to Courier (Transaction)
 // const createAndSubmitOrderInDB = async (
@@ -62,7 +71,6 @@ import { TProduct } from "../product/product.interface";
 //     const orderNumber = `${subdomain.toUpperCase()}-ORD-${Date.now()}-${orderCount + 1}`;
 
 //     const orderData = {
-//       // tenantId: subdomain,
 //       userId: userId ? new Types.ObjectId(userId) : null,
 //       guestCheckout: payload.guestCheckout,
 //       guestEmail: payload.guestEmail,
@@ -220,7 +228,6 @@ const createOrderIntoDB = async (
     const orderNumber = `${subdomain.toUpperCase()}-ORD-${Date.now()}-${orderCount + 1}`;
 
     const orderData = {
-      // tenantId: subdomain,
       userId: userId ? new Types.ObjectId(userId) : null,
       guestCheckout: payload.guestCheckout,
       guestEmail: payload.guestEmail,
@@ -322,7 +329,7 @@ const submitSingleOrderToCourierInDB = async (
 
     if (deliveryMethod.type === "PATHAO") {
       const environment = config.pathao_environment;
-      const pathaoService = new PathaoService(environment);
+      const pathaoService = new PathaoService(environment, subdomain);
 
       const guestInfo = order.guestInfo;
 
@@ -620,9 +627,10 @@ const getAllOrdersFromDB = async (
 const getOrderByIdFromDB = async (subdomain: string, orderId: string) => {
   try {
     const Order = await getTenantModel(subdomain, "Order");
+    await getTenantModel(subdomain, "User");
+    await getTenantModel(subdomain, "Product");
 
     const order = await Order.findOne({
-      tenantId: subdomain,
       _id: new Types.ObjectId(orderId),
     })
       .populate("userId", "name email phone")
@@ -648,7 +656,6 @@ const getGuestOrderFromDB = async (
 
     // Guest order retrieve (email + orderId verify)
     const order = await Order.findOne({
-      tenantId: subdomain,
       _id: new Types.ObjectId(orderId),
       guestCheckout: true,
       guestEmail: email,
@@ -798,7 +805,6 @@ const cancelOrderInDB = async (subdomain: string, orderId: string) => {
 
     // Order cancel করার আগে check করুন যে order পাঠানো হয়নি
     const order: IOrder | null = await Order.findOne({
-      tenantId: subdomain,
       _id: new Types.ObjectId(orderId),
     });
 
@@ -813,7 +819,6 @@ const cancelOrderInDB = async (subdomain: string, orderId: string) => {
     // Cancel করুন
     const cancelledOrder = await Order.findOneAndUpdate(
       {
-        tenantId: subdomain,
         _id: new Types.ObjectId(orderId),
       },
       {
@@ -829,20 +834,97 @@ const cancelOrderInDB = async (subdomain: string, orderId: string) => {
   }
 };
 
-const getDashboardStatsFromDB = async (subdomain: string) => {
+const getDateRangeFilter = (range: DateRange) => {
+  const now = new Date();
+  let startDate: Date;
+  let endDate: Date = new Date();
+
+  switch (range) {
+    case "today":
+      startDate = startOfDay(now);
+      endDate = endOfDay(now);
+      break;
+
+    case "yesterday":
+      startDate = startOfDay(subDays(now, 1));
+      endDate = endOfDay(subDays(now, 1));
+      break;
+
+    case "last7days":
+      startDate = subDays(now, 6);
+      startDate = startOfDay(startDate);
+      endDate = endOfDay(now);
+      break;
+
+    case "last15days":
+      startDate = subDays(now, 14);
+      startDate = startOfDay(startDate);
+      endDate = endOfDay(now);
+      break;
+
+    case "last30days":
+      startDate = subDays(now, 29);
+      startDate = startOfDay(startDate);
+      endDate = endOfDay(now);
+      break;
+
+    case "lastMonth":
+      startDate = startOfMonth(subMonths(now, 1));
+      endDate = endOfDay(subMonths(now, 1));
+      break;
+
+    case "thisYear":
+      startDate = startOfYear(now);
+      endDate = endOfDay(now);
+      break;
+
+    case "lastYear":
+      startDate = startOfYear(subYears(now, 1));
+      endDate = endOfDay(subYears(now, 1));
+      break;
+
+    case "lifetime":
+    default:
+      startDate = new Date(0); // Beginning of time
+      endDate = endOfDay(now);
+      break;
+  }
+
+  return { startDate, endDate };
+};
+
+export const getDashboardStatsFromDB = async (
+  subdomain: string,
+  dateRange: DateRange = "lifetime",
+) => {
   try {
     const Order = await getTenantModel(subdomain, "Order");
     await getTenantModel(subdomain, "Product");
 
-    const allOrders = await Order.find();
+    const { startDate, endDate } = getDateRangeFilter(dateRange);
 
+    // Build query filter
+    const dateFilter =
+      dateRange === "lifetime"
+        ? {}
+        : {
+            createdAt: {
+              $gte: startDate,
+              $lte: endDate,
+            },
+          };
+
+    // Get all orders within date range
+    const allOrders = await Order.find(dateFilter);
+
+    // Calculate totals
     const totalOrders = allOrders.length;
     const totalRevenue = allOrders.reduce(
       (sum: number, o: any) => sum + (o.totalPrice || 0),
       0,
     );
 
-    // unique customers
+    // Unique customers
     const uniqueEmails = new Set(
       allOrders.map((o: any) => o.guestEmail).filter(Boolean),
     );
@@ -851,10 +933,11 @@ const getDashboardStatsFromDB = async (subdomain: string) => {
     );
     const totalCustomers = uniqueEmails.size + uniqueUserIds.size;
 
+    // Average order value
     const avgOrderValue =
       totalOrders > 0 ? Math.round(totalRevenue / totalOrders) : 0;
 
-    // order status breakdown
+    // Order status breakdown
     const statusBreakdown = {
       pending: 0,
       processing: 0,
@@ -871,45 +954,241 @@ const getDashboardStatsFromDB = async (subdomain: string) => {
       }
     });
 
-    // last 7 days daily orders
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().split("T")[0];
-    });
+    // Generate date range for daily orders chart
+    let dailyOrders: any[] = [];
 
-    const dailyOrders = last7Days.map((date) => {
-      const dayOrders = allOrders.filter((o: any) => {
-        const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
-        return orderDate === date;
+    if (dateRange === "last7days") {
+      // Last 7 days
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const d = subDays(endDate, 6 - i);
+        return d.toISOString().split("T")[0];
       });
-      return {
-        date,
-        orders: dayOrders.length,
-        revenue: dayOrders.reduce(
-          (sum: number, o: any) => sum + (o.totalPrice || 0),
-          0,
-        ),
-      };
-    });
 
-    // recent 5 orders
-    const recentOrders = await Order.find()
+      dailyOrders = last7Days.map((date) => {
+        const dayOrders = allOrders.filter((o: any) => {
+          const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
+          return orderDate === date;
+        });
+        return {
+          date,
+          orders: dayOrders.length,
+          revenue: dayOrders.reduce(
+            (sum: number, o: any) => sum + (o.totalPrice || 0),
+            0,
+          ),
+        };
+      });
+    } else if (dateRange === "last30days" || dateRange === "last15days") {
+      // For 15 or 30 days, group by day
+      const daysCount = dateRange === "last30days" ? 30 : 15;
+      const daysArray = Array.from({ length: daysCount }, (_, i) => {
+        const d = subDays(endDate, daysCount - 1 - i);
+        return d.toISOString().split("T")[0];
+      });
+
+      dailyOrders = daysArray.map((date) => {
+        const dayOrders = allOrders.filter((o: any) => {
+          const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
+          return orderDate === date;
+        });
+        return {
+          date,
+          orders: dayOrders.length,
+          revenue: dayOrders.reduce(
+            (sum: number, o: any) => sum + (o.totalPrice || 0),
+            0,
+          ),
+        };
+      });
+    } else if (dateRange === "thisYear" || dateRange === "lastYear") {
+      // For years, group by month
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+
+      dailyOrders = months.map((month, index) => {
+        const monthOrders = allOrders.filter((o: any) => {
+          const orderDate = new Date(o.createdAt);
+          return orderDate.getMonth() === index;
+        });
+        return {
+          date: month,
+          orders: monthOrders.length,
+          revenue: monthOrders.reduce(
+            (sum: number, o: any) => sum + (o.totalPrice || 0),
+            0,
+          ),
+        };
+      });
+    } else if (dateRange === "lastMonth") {
+      // For single month, group by day
+      const daysInMonth = new Date(
+        startDate.getFullYear(),
+        startDate.getMonth() + 1,
+        0,
+      ).getDate();
+      const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+      dailyOrders = daysArray.map((day) => {
+        const dayOrders = allOrders.filter((o: any) => {
+          const orderDate = new Date(o.createdAt);
+          return (
+            orderDate.getDate() === day &&
+            orderDate.getMonth() === startDate.getMonth()
+          );
+        });
+        return {
+          date: `${startDate.toLocaleString("default", { month: "short" })} ${day}`,
+          orders: dayOrders.length,
+          revenue: dayOrders.reduce(
+            (sum: number, o: any) => sum + (o.totalPrice || 0),
+            0,
+          ),
+        };
+      });
+    } else {
+      // For lifetime or other ranges, show last 30 days summary
+      const last30Days = Array.from({ length: 30 }, (_, i) => {
+        const d = subDays(endDate, 29 - i);
+        return d.toISOString().split("T")[0];
+      });
+
+      dailyOrders = last30Days.map((date) => {
+        const dayOrders = allOrders.filter((o: any) => {
+          const orderDate = new Date(o.createdAt).toISOString().split("T")[0];
+          return orderDate === date;
+        });
+        return {
+          date,
+          orders: dayOrders.length,
+          revenue: dayOrders.reduce(
+            (sum: number, o: any) => sum + (o.totalPrice || 0),
+            0,
+          ),
+        };
+      });
+    }
+
+    // Recent 5 orders within date range
+    const recentOrders = await Order.find(dateFilter)
       .sort({ createdAt: -1 })
       .limit(5)
       .populate("items.productId", "name images");
 
+    // Additional insights
+    const topProducts = await getTopProducts(allOrders, 5);
+    const paymentMethodBreakdown = getPaymentMethodBreakdown(allOrders);
+
     return {
-      totalOrders,
-      totalRevenue,
-      totalCustomers,
-      avgOrderValue,
-      statusBreakdown,
-      dailyOrders,
+      dateRange,
+      dateRangeDisplay: getDateRangeDisplay(dateRange, startDate, endDate),
+      summary: {
+        totalOrders,
+        totalRevenue,
+        totalCustomers,
+        avgOrderValue,
+      },
+      breakdown: {
+        status: statusBreakdown,
+        paymentMethod: paymentMethodBreakdown,
+        topProducts,
+      },
+      charts: {
+        dailyOrders,
+      },
       recentOrders,
     };
   } catch (error) {
     throw error;
+  }
+};
+
+// Helper: Get top products
+const getTopProducts = async (orders: any[], limit: number) => {
+  const productMap = new Map();
+
+  orders.forEach((order) => {
+    order.items?.forEach((item: any) => {
+      const productId =
+        item.productId?._id?.toString() || item.productId?.toString();
+      if (productId) {
+        const existing = productMap.get(productId) || {
+          productId,
+          name: item.productId?.name || "Unknown Product",
+          image: item.productId?.images?.[0] || null,
+          quantity: 0,
+          revenue: 0,
+        };
+        existing.quantity += item.quantity;
+        existing.revenue += (item.price || 0) * item.quantity;
+        productMap.set(productId, existing);
+      }
+    });
+  });
+
+  return Array.from(productMap.values())
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, limit);
+};
+
+// Helper: Get payment method breakdown
+const getPaymentMethodBreakdown = (orders: any[]) => {
+  const breakdown: any = {};
+
+  orders.forEach((order) => {
+    const method = order.paymentMethod || "unknown";
+    breakdown[method] = (breakdown[method] || 0) + 1;
+  });
+
+  return breakdown;
+};
+
+// Helper: Get human readable date range display
+const getDateRangeDisplay = (
+  range: DateRange,
+  startDate: Date,
+  endDate: Date,
+) => {
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
+
+  switch (range) {
+    case "today":
+      return "Today";
+    case "yesterday":
+      return "Yesterday";
+    case "last7days":
+      return "Last 7 Days";
+    case "last15days":
+      return "Last 15 Days";
+    case "last30days":
+      return "Last 30 Days";
+    case "lastMonth":
+      return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+    case "thisYear":
+      return `This Year (${startDate.getFullYear()})`;
+    case "lastYear":
+      return `Last Year (${startDate.getFullYear()})`;
+    case "lifetime":
+      return "Lifetime";
+    default:
+      return `${formatDate(startDate)} - ${formatDate(endDate)}`;
   }
 };
 
@@ -1160,7 +1439,6 @@ const handleCourierWebhookInDB = async (
     // Order update করি
     const order = await Order.findOneAndUpdate(
       {
-        tenantId: subdomain,
         orderNumber: merchant_order_id,
       },
       {

@@ -5,7 +5,7 @@
   "license": "ISC",
   "author": "",
   "type": "module",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "build": "tsup",
     "dev": "tsx watch ./src/server.ts",
@@ -20,6 +20,7 @@
     "cloudinary": "^2.9.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
+    "date-fns": "^4.4.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "http-status": "^2.1.0",

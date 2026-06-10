@@ -2,9 +2,9 @@ import { Types } from "mongoose";
 import { Document } from "mongoose";
 
 export interface IChartRow {
-  size: number;
-  innerLength?: number;
-  feetLength?: number;
+  size: string;
+  innerLength?: string;
+  feetLength?: string;
   ageRange?: string;
   note?: string;
 }

@@ -8,6 +8,8 @@ import sendResponse from "../../../utils/SendResponse";
 import orderService from "./order.service";
 import deliveryMethodService from "../deliveryMethod/deliveryMethod.service";
 import config from "../../../config";
+import AppError from "../../../errors/AppError";
+import { DateRange } from "./order.interface";
 
 const createOrder = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -182,19 +184,40 @@ const cancelOrder = catchAsync(
   },
 );
 
-const getDashboardStats = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const subdomain = req.headers["x-tenant"] as string;
-    const result = await orderService.getDashboardStatsFromDB(subdomain);
+const getDashboardStats = catchAsync(async (req, res) => {
+  const subdomain = req.headers["x-tenant"] as string;
 
-    sendResponse(res, {
-      statusCode: status.OK,
-      success: true,
-      message: "Dashboard stats retrieved successfully",
-      data: result,
-    });
-  },
-);
+  const { dateRange = "lifetime" } = req.query;
+
+  // Validate dateRange parameter
+  const validRanges = [
+    "today",
+    "yesterday",
+    "last7days",
+    "last15days",
+    "last30days",
+    "lastMonth",
+    "thisYear",
+    "lastYear",
+    "lifetime",
+  ];
+
+  if (!validRanges.includes(dateRange as string)) {
+    throw new AppError(400, "Invalid date range parameter");
+  }
+
+  const result = await orderService.getDashboardStatsFromDB(
+    subdomain,
+    dateRange as DateRange,
+  );
+
+  sendResponse(res, {
+    statusCode: 200,
+    success: true,
+    message: "Dashboard stats retrieved successfully",
+    data: result,
+  });
+});
 
 const receivePathaoWebhook = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {

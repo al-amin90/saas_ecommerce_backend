@@ -53,3 +53,14 @@ export interface IOrder extends Document {
   // Tracking
   orderNumber: string;
 }
+
+export type DateRange =
+  | "today"
+  | "yesterday"
+  | "last7days"
+  | "last15days"
+  | "last30days"
+  | "lastMonth"
+  | "thisYear"
+  | "lastYear"
+  | "lifetime";

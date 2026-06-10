@@ -3,9 +3,9 @@ import { ISizeChart } from "./sizeChart.interface";
 
 const chartRowSchema = new Schema(
   {
-    size: { type: Number, required: true },
-    innerLength: { type: Number },
-    feetLength: { type: Number },
+    size: { type: String, required: true },
+    innerLength: { type: String },
+    feetLength: { type: String },
     ageRange: { type: String },
     note: { type: String },
   },
