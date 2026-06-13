@@ -11,8 +11,11 @@ export const bannerSchema = new Schema<TBannerSystem>(
     productID: { type: Schema.Types.ObjectId, ref: "Product", default: null },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+    order: { type: Number, default: 0 },
   },
   { timestamps: true },
 );
+
+bannerSchema.index({ order: 1, createdAt: -1 });
 
 export default bannerSchema;

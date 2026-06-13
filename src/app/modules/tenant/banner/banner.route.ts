@@ -32,4 +32,6 @@ router.patch("/:bannerId/toggle", bannerController.toggleBannerStatus);
 
 router.delete("/:bannerId", bannerController.deleteBanner);
 
+router.post("/reorder", bannerController.reorderBanners);
+
 export const bannerRouter = router;

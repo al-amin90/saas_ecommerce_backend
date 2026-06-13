@@ -9,4 +9,5 @@ export type TBannerSystem = {
   productID?: Types.ObjectId;
   isActive?: boolean;
   isDeleted?: boolean;
+  order?: number;
 } & Document;

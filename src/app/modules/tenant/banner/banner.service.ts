@@ -9,8 +9,16 @@ const createBannerIntoDB = async (
 ) => {
   const Banner = await getTenantModel(subdomain, "Banner");
 
+  // Get the highest order number
+  const lastBanner = await Banner.findOne({ isDeleted: false })
+    .sort({ order: -1 })
+    .select("order");
+
+  const maxOrder = lastBanner?.order ?? 0;
+
   const data = {
     ...payload,
+    order: maxOrder + 1, // 👈 Set order to be last
     ...(imageUrl && { image: imageUrl }),
     ...(payload.productID && {
       productID: new Types.ObjectId(payload.productID as unknown as string),
@@ -25,8 +33,8 @@ const getAllBannersFromDB = async (subdomain: string) => {
   await getTenantModel(subdomain, "Product");
 
   return await Banner.find({ isDeleted: false })
-    .populate("productID", "name slug images discountPrice price")
-    .sort({ createdAt: -1 });
+    .sort({ order: 1, createdAt: -1 })
+    .populate("productID", "name slug images discountPrice price");
 };
 
 const getActiveBannersFromDB = async (subdomain: string) => {
@@ -35,7 +43,7 @@ const getActiveBannersFromDB = async (subdomain: string) => {
 
   return await Banner.find({ isDeleted: false, isActive: true })
     .populate("productID", "name slug images discountPrice price")
-    .sort({ createdAt: -1 });
+    .sort({ order: 1, createdAt: -1 });
 };
 
 const getBannerByIdFromDB = async (subdomain: string, bannerId: string) => {
@@ -97,6 +105,31 @@ const toggleBannerStatusIntoDB = async (
   return banner;
 };
 
+const reorderBannersIntoDB = async (
+  subdomain: string,
+  bannerOrders: { _id: string; order: number }[],
+) => {
+  const Banner = await getTenantModel(subdomain, "Banner");
+  await getTenantModel(subdomain, "Product");
+
+  // Bulk update orders
+  const bulkOps = bannerOrders.map((item) => ({
+    updateOne: {
+      filter: { _id: new Types.ObjectId(item._id), isDeleted: false },
+      update: { $set: { order: item.order } },
+    },
+  }));
+
+  const result = await Banner.bulkWrite(bulkOps);
+
+  // Return updated banners in order
+  const updatedBanners = await Banner.find({ isDeleted: false })
+    .sort({ order: 1, createdAt: -1 })
+    .populate("productID", "name slug images discountPrice price");
+
+  return updatedBanners;
+};
+
 const deleteBannerFromDB = async (subdomain: string, bannerId: string) => {
   const Banner = await getTenantModel(subdomain, "Banner");
 
@@ -118,4 +151,5 @@ export const bannerService = {
   updateBannerIntoDB,
   toggleBannerStatusIntoDB,
   deleteBannerFromDB,
+  reorderBannersIntoDB,
 };

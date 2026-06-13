@@ -146,6 +146,23 @@ const deleteBanner = catchAsync(async (req: Request, res: Response) => {
   });
 });
 
+const reorderBanners = catchAsync(async (req: Request, res: Response) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const { bannerOrders } = req.body;
+
+  const result = await bannerService.reorderBannersIntoDB(
+    subdomain,
+    bannerOrders,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Banners reordered successfully",
+    data: result,
+  });
+});
+
 export const bannerController = {
   createBanner,
   getAllBanners,
@@ -154,4 +171,5 @@ export const bannerController = {
   updateBanner,
   toggleBannerStatus,
   deleteBanner,
+  reorderBanners,
 };

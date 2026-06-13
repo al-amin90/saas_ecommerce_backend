@@ -10,6 +10,7 @@ const createBannerSchema = z.object({
       .optional(),
     description: z.string().optional(),
     productID: z.string().optional(),
+    isActive: z.preprocess(Boolean, z.boolean()).optional(),
   }),
 });
 
@@ -23,7 +24,7 @@ const updateBannerSchema = z.object({
       .optional(),
     description: z.string().optional(),
     productID: z.string().optional(),
-    isActive: z.boolean().optional(),
+    isActive: z.preprocess(Boolean, z.boolean()).optional(),
   }),
 });
 

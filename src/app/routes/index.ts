@@ -46,7 +46,7 @@ const moduleRouters = [
     route: deliveryMethodRouter,
   },
   {
-    path: "/system/banner",
+    path: "/banner",
     route: bannerRouter,
   },
 ];
