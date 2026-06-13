@@ -7,6 +7,7 @@ import { orderRouter } from "../modules/tenant/order/order.route";
 import { deliveryMethodRouter } from "../modules/tenant/deliveryMethod/deliveryMethod.route";
 import userRouter from "../modules/tenant/user/user.route";
 import { sizeChartRouter } from "../modules/tenant/sizeChart/sizeChart.route";
+import { bannerRouter } from "../modules/tenant/banner/banner.route";
 
 const router = Router();
 
@@ -43,6 +44,10 @@ const moduleRouters = [
   {
     path: "/delivery-method",
     route: deliveryMethodRouter,
+  },
+  {
+    path: "/system/banner",
+    route: bannerRouter,
   },
 ];
 

@@ -10,6 +10,7 @@ import {
   variantSchema,
 } from "../modules/tenant/product/product.model";
 import orderSchema from "../modules/tenant/order/order.model";
+import bannerSchema from "../modules/tenant/banner/banner.model";
 import deliveryMethodSchema from "../modules/tenant/deliveryMethod/deliveryMethod.schema";
 import { sizeChartSchema } from "../modules/tenant/sizeChart/sizeChart.model";
 
@@ -28,7 +29,8 @@ export type TenantModelName =
   | "Variant"
   | "Order"
   | "DeliveryMethod"
-  | "SizeChart";
+  | "SizeChart"
+  | "Banner";
 
 export type ModelName = CentralModelName | TenantModelName;
 
@@ -45,6 +47,7 @@ const schemaRegistry: Record<ModelName, Schema> = {
   Order: orderSchema,
   DeliveryMethod: deliveryMethodSchema,
   SizeChart: sizeChartSchema,
+  Banner: bannerSchema,
 };
 
 const centralModelNames: CentralModelName[] = [
@@ -63,6 +66,7 @@ const tenantModelNames: TenantModelName[] = [
   "Order",
   "DeliveryMethod",
   "SizeChart",
+  "Banner",
 ];
 
 class ModelFactory {
