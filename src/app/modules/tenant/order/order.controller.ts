@@ -260,6 +260,10 @@ const receivePathaoWebhook = catchAsync(
       });
     } catch (error) {
       console.error("❌ Webhook error:", error);
+      res.setHeader(
+        "X-Pathao-Merchant-Webhook-Integration-Secret",
+        config.webhook_secret as string,
+      );
 
       // ✅ Even on error, return 202 (Courier requirement)
       res.status(202).json({

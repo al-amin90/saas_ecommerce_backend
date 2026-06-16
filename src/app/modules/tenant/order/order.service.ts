@@ -1497,6 +1497,14 @@ const handleCourierWebhookInDB = async (
         console.log(`🔄 Order ${order.orderNumber} returned`);
         break;
 
+      case "order.paid":
+        newStatus = "returned";
+        updateData = {
+          "courierResponse.returned_at": payload.updated_at,
+        };
+        console.log(`🔄 Order ${order.orderNumber} returned`);
+        break;
+
       default:
         console.log(`⚠️ Unhandled event type: ${payload.event}`);
         return;
