@@ -31,11 +31,7 @@ router.get("/", orderController.getAllOrders);
 router.get("/guest", orderController.getGuestOrder);
 router.get("/:orderId", orderController.getOrderById);
 
-router.patch(
-  "/:orderId/status",
-
-  orderController.updateOrderStatus,
-);
+router.patch("/:orderId/status", orderController.updateOrderStatus);
 router.patch("/:orderId/cancel", orderController.cancelOrder);
 
 router.post("/webhook/pathao/:subdomain", orderController.receivePathaoWebhook);

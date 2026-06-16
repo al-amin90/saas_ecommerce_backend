@@ -1,5 +1,6 @@
 import { Schema } from "mongoose";
 import { IOrder } from "./order.interface";
+import { VALID_ORDER_STATUSES, VALID_PAYMENT_STATUSES } from "./order.const";
 
 const orderSchema = new Schema<IOrder>(
   {
@@ -45,27 +46,21 @@ const orderSchema = new Schema<IOrder>(
       type: String,
       enum: ["cash", "card"],
     },
-    paymentStatus: {
-      type: String,
-      enum: ["pending", "completed", "failed"],
-      default: "pending",
-    },
     orderStatus: {
       type: String,
-      enum: [
-        "pending",
-        "processing",
-        "shipped",
-        "delivered",
-        "cancelled",
-        "returned",
-      ],
+      enum: VALID_ORDER_STATUSES,
+      default: "pending",
+    },
+    paymentStatus: {
+      type: String,
+      enum: VALID_PAYMENT_STATUSES,
       default: "pending",
     },
     orderNumber: {
       type: String,
       unique: true,
     },
+    invoice_id: String,
   },
   { timestamps: true },
 );

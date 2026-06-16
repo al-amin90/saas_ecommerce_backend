@@ -1432,92 +1432,135 @@ const handleCourierWebhookInDB = async (
       orderNumber: payload.merchant_order_id,
     });
 
-    // if (!order) {
-    //   console.error(`❌ Order not found: ${payload.merchant_order_id}`);
+    if (!order) {
+      console.error(`❌ Order not found: ${payload.merchant_order_id}`);
 
-    //   throw new AppError(404, "Order not found");
-    // }
+      throw new AppError(404, "Order not found");
+    }
 
     console.log(
       `✅ Order found: ${order.orderNumber} (Current status: ${order.orderStatus})`,
     );
-
-    // 3. Update order status based on webhook event
-    let newStatus = order.orderStatus;
+    let newOrderStatus = order.orderStatus;
+    let newPaymentStatus = order.paymentStatus;
     let updateData: any = {};
 
     switch (payload.event) {
+      // ========== ORDER CREATED ==========
       case "order.created":
-        newStatus = "processing";
+        newOrderStatus = "processing";
         updateData = {
           "courierResponse.consignment_id": payload.consignment_id,
           "courierResponse.updated_at": payload.updated_at,
           "courierResponse.delivery_fee": payload.delivery_fee,
+          "courierResponse.last_event": payload.event,
         };
         console.log(`📦 Order ${order.orderNumber} created in courier system`);
         break;
 
-      case "order.accepted":
-        newStatus = "processing";
+      // ========== ORDER PAID ==========
+      case "order.paid":
+        newPaymentStatus = "paid";
         updateData = {
-          "courierResponse.accepted_at": payload.updated_at,
+          "courierResponse.invoice_id": payload.invoice_id,
+          "courierResponse.paid_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
+          invoice_id: payload.invoice_id,
         };
-        console.log(`✅ Order ${order.orderNumber} accepted by courier`);
+        console.log(`💰 Order ${order.orderNumber} payment received`);
         break;
 
+      // ========== ORDER PICKED ==========
       case "order.picked":
-        newStatus = "shipped";
+        newOrderStatus = "shipped";
         updateData = {
           "courierResponse.picked_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
         };
         console.log(`🚚 Order ${order.orderNumber} picked up for delivery`);
         break;
 
+      // ========== ORDER DELIVERED ==========
       case "order.delivered":
-        newStatus = "delivered";
+        newOrderStatus = "delivered";
+        // ✅ If payment method is cash, mark as paid on delivery
+        if (order.paymentMethod === "cash") {
+          newPaymentStatus = "paid";
+        }
         updateData = {
           "courierResponse.delivered_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
         };
         console.log(`✅ Order ${order.orderNumber} delivered successfully!`);
         break;
 
+      // ========== DELIVERY FAILED ==========
+      case "order.delivery-failed":
+        newOrderStatus = "delivery_failed";
+        updateData = {
+          "courierResponse.failed_reason": payload.reason || "Unknown reason",
+          "courierResponse.failed_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
+        };
+        console.log(
+          `❌ Order ${order.orderNumber} delivery failed: ${payload.reason}`,
+        );
+        break;
+
+      // ========== ORDER EXCHANGED ==========
+      case "order.exchanged":
+        newOrderStatus = "exchanged";
+        updateData = {
+          "courierResponse.exchanged_at": payload.updated_at,
+          "courierResponse.collected_amount": payload.collected_amount,
+          "courierResponse.last_event": payload.event,
+        };
+        console.log(
+          `🔄 Order ${order.orderNumber} exchanged (Collected: ${payload.collected_amount})`,
+        );
+        break;
+
+      // ========== ORDER CANCELLED ==========
       case "order.cancelled":
-        newStatus = "cancelled";
+        newOrderStatus = "cancelled";
+        // ✅ If payment was made, mark as refunded
+        if (order.paymentStatus === "paid") {
+          newPaymentStatus = "refunded";
+        }
         updateData = {
           "courierResponse.cancelled_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
         };
-        console.log(`❌ Order ${order.orderNumber} cancelled by courier`);
+        console.log(`❌ Order ${order.orderNumber} cancelled`);
         break;
 
+      // ========== ORDER RETURNED ==========
       case "order.returned":
-        newStatus = "returned";
+        newOrderStatus = "returned";
+        // ✅ If payment was made, mark as refunded
+        if (order.paymentStatus === "paid") {
+          newPaymentStatus = "refunded";
+        }
         updateData = {
           "courierResponse.returned_at": payload.updated_at,
-        };
-        console.log(`🔄 Order ${order.orderNumber} returned`);
-        break;
-
-      case "order.paid":
-        newStatus = "returned";
-        updateData = {
-          "courierResponse.returned_at": payload.updated_at,
+          "courierResponse.last_event": payload.event,
         };
         console.log(`🔄 Order ${order.orderNumber} returned`);
         break;
 
       default:
         console.log(`⚠️ Unhandled event type: ${payload.event}`);
-        return;
+        return null;
     }
 
-    // 4. Update order in database
+    // ✅ Update order in database
     const updatedOrder = await Order.findByIdAndUpdate(
       order._id,
       {
         $set: {
-          orderStatus: newStatus,
+          orderStatus: newOrderStatus,
+          paymentStatus: newPaymentStatus,
           ...updateData,
-          "courierResponse.last_event": payload.event,
           "courierResponse.last_update": new Date(),
           updatedAt: new Date(),
         },
@@ -1525,7 +1568,10 @@ const handleCourierWebhookInDB = async (
       { new: true },
     );
 
-    console.log(`✅ Order updated to ${newStatus}`);
+    console.log(`✅ Order ${updatedOrder.orderNumber} updated:`, {
+      orderStatus: newOrderStatus,
+      paymentStatus: newPaymentStatus,
+    });
 
     // 5. (Optional) Send notification to user
     // await sendOrderStatusNotification(updatedOrder, newStatus);

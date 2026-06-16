@@ -1,6 +1,7 @@
 // src/interface/order.interface.ts
 
 import { Document, Types } from "mongoose";
+import { OrderStatus, PaymentStatus } from "./order.const";
 
 export interface IOrderItem {
   productId: Types.ObjectId;
@@ -41,15 +42,9 @@ export interface IOrder extends Document {
   totalPrice: number;
 
   paymentMethod: "cod" | "card";
-  paymentStatus: "pending" | "completed" | "failed";
-
-  orderStatus:
-    | "pending"
-    | "processing"
-    | "shipped"
-    | "delivered"
-    | "cancelled"
-    | "returned";
+  orderStatus: OrderStatus;
+  paymentStatus: PaymentStatus;
+  invoice_id: string;
 
   // ✅ নতুন: Delivery Information
   deliveryMethodId?: Types.ObjectId; // কোন courier ব্যবহার করছি
