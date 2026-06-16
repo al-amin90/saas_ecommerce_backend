@@ -5,6 +5,7 @@ export const VALID_ORDER_STATUSES = [
   "shipped",
   "delivered",
   "cancelled",
+  "returned",
 ];
 
 export const VALID_PAYMENT_STATUSES = ["pending", "completed", "failed"];

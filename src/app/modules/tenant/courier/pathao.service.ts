@@ -237,7 +237,6 @@ class PathaoService {
 
   // ✅ Verify Webhook Signature
   static verifyWebhookSignature(payload: any, signature: string): boolean {
-    const crypto = require("crypto");
     const webhookSecret = config.webhook_secret;
 
     if (!webhookSecret) {
@@ -245,12 +244,7 @@ class PathaoService {
       return false;
     }
 
-    const expectedSignature = crypto
-      .createHmac("sha256", webhookSecret)
-      .update(JSON.stringify(payload))
-      .digest("hex");
-
-    return signature === expectedSignature;
+    return signature === webhookSecret;
   }
 
   // src/modules/courier/pathao.service.ts (নতুন method যোগ করি)

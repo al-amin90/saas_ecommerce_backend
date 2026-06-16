@@ -43,7 +43,13 @@ export interface IOrder extends Document {
   paymentMethod: "cod" | "card";
   paymentStatus: "pending" | "completed" | "failed";
 
-  orderStatus: "pending" | "processing" | "shipped" | "delivered" | "cancelled";
+  orderStatus:
+    | "pending"
+    | "processing"
+    | "shipped"
+    | "delivered"
+    | "cancelled"
+    | "returned";
 
   // ✅ নতুন: Delivery Information
   deliveryMethodId?: Types.ObjectId; // কোন courier ব্যবহার করছি

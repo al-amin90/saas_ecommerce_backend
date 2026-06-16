@@ -893,7 +893,7 @@ const getDateRangeFilter = (range: DateRange) => {
   return { startDate, endDate };
 };
 
-export const getDashboardStatsFromDB = async (
+const getDashboardStatsFromDB = async (
   subdomain: string,
   dateRange: DateRange = "lifetime",
 ) => {
@@ -1412,54 +1412,119 @@ const handleCourierWebhookInDB = async (
   try {
     console.log("🔔 Webhook received");
 
-    // ✅ Signature verify করি
-    if (!PathaoService.verifyWebhookSignature(payload, signature)) {
+    console.log("📨 Webhook received:", {
+      event: payload.event,
+      merchant_order_id: payload.merchant_order_id,
+      consignment_id: payload.consignment_id,
+    });
+
+    // 1. Verify webhook signature
+    const isValid = PathaoService.verifyWebhookSignature(payload, signature);
+    if (!isValid) {
+      console.error("❌ Invalid webhook signature");
       throw new Error("Invalid webhook signature");
     }
 
     console.log("✅ Signature verified!");
+    // 2. Find order by orderNumber (which you sent as merchant_order_id)
+    const Order = await getTenantModel<IOrder>(subdomain, "Order");
+    const order = await Order.findOne({
+      orderNumber: payload.merchant_order_id,
+    });
 
-    const Order = await getTenantModel(subdomain, "Order");
+    if (!order) {
+      console.error(`❌ Order not found: ${payload.merchant_order_id}`);
 
-    const { consignment_id, merchant_order_id, event, timestamp } = payload;
+      throw new AppError(404, "Order not found");
+    }
 
-    console.log("Processing event:", event);
+    console.log(
+      `✅ Order found: ${order.orderNumber} (Current status: ${order.orderStatus})`,
+    );
 
-    // Event map করি
-    const statusMap: Record<string, string> = {
-      "order.picked-up": "processing",
-      "order.in-transit": "shipped",
-      "order.delivered": "delivered",
-      "order.delivery-failed": "cancelled",
-      "order.on-hold": "pending",
-    };
+    // 3. Update order status based on webhook event
+    let newStatus = order.orderStatus;
+    let updateData: any = {};
 
-    const newStatus = statusMap[event] || "processing";
+    switch (payload.event) {
+      case "order.created":
+        newStatus = "processing";
+        updateData = {
+          "courierResponse.consignment_id": payload.consignment_id,
+          "courierResponse.updated_at": payload.updated_at,
+          "courierResponse.delivery_fee": payload.delivery_fee,
+        };
+        console.log(`📦 Order ${order.orderNumber} created in courier system`);
+        break;
 
-    // Order update করি
-    const order = await Order.findOneAndUpdate(
+      case "order.accepted":
+        newStatus = "processing";
+        updateData = {
+          "courierResponse.accepted_at": payload.updated_at,
+        };
+        console.log(`✅ Order ${order.orderNumber} accepted by courier`);
+        break;
+
+      case "order.picked":
+        newStatus = "shipped";
+        updateData = {
+          "courierResponse.picked_at": payload.updated_at,
+        };
+        console.log(`🚚 Order ${order.orderNumber} picked up for delivery`);
+        break;
+
+      case "order.delivered":
+        newStatus = "delivered";
+        updateData = {
+          "courierResponse.delivered_at": payload.updated_at,
+        };
+        console.log(`✅ Order ${order.orderNumber} delivered successfully!`);
+        break;
+
+      case "order.cancelled":
+        newStatus = "cancelled";
+        updateData = {
+          "courierResponse.cancelled_at": payload.updated_at,
+        };
+        console.log(`❌ Order ${order.orderNumber} cancelled by courier`);
+        break;
+
+      case "order.returned":
+        newStatus = "returned";
+        updateData = {
+          "courierResponse.returned_at": payload.updated_at,
+        };
+        console.log(`🔄 Order ${order.orderNumber} returned`);
+        break;
+
+      default:
+        console.log(`⚠️ Unhandled event type: ${payload.event}`);
+        return;
+    }
+
+    // 4. Update order in database
+    const updatedOrder = await Order.findByIdAndUpdate(
+      order._id,
       {
-        orderNumber: merchant_order_id,
-      },
-      {
-        orderStatus: newStatus,
-        courierTrackingId: consignment_id,
-        courierResponse: {
-          event,
-          timestamp,
-          verifiedAt: new Date(),
+        $set: {
+          orderStatus: newStatus,
+          ...updateData,
+          "courierResponse.last_event": payload.event,
+          "courierResponse.last_update": new Date(),
+          updatedAt: new Date(),
         },
       },
       { new: true },
     );
 
-    if (!order) {
-      throw new Error("Order not found");
-    }
+    console.log(`✅ Order updated to ${newStatus}`);
+
+    // 5. (Optional) Send notification to user
+    // await sendOrderStatusNotification(updatedOrder, newStatus);
 
     console.log("✅ Order updated successfully");
 
-    return order;
+    return updatedOrder;
   } catch (error) {
     console.error("Webhook error:", error);
     throw error;

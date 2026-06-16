@@ -52,7 +52,14 @@ const orderSchema = new Schema<IOrder>(
     },
     orderStatus: {
       type: String,
-      enum: ["pending", "processing", "shipped", "delivered", "cancelled"],
+      enum: [
+        "pending",
+        "processing",
+        "shipped",
+        "delivered",
+        "cancelled",
+        "returned",
+      ],
       default: "pending",
     },
     orderNumber: {

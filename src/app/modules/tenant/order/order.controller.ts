@@ -221,12 +221,14 @@ const getDashboardStats = catchAsync(async (req, res) => {
 
 const receivePathaoWebhook = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
-    const subdomain = req.headers["x-tenant"] as string;
+    const subdomain =
+      (req.headers["x-tenant"] as string) || (req.params.subdomain as string);
 
     // ✅ Log করি যে webhook আসছে
     console.log("🔔 Webhook Received:");
     console.log("Headers:", req.headers);
     console.log("Body:", req.body);
+    console.log("subdomain:", subdomain);
 
     const payload = req.body;
 
