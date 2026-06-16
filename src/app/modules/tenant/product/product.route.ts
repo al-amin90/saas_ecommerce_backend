@@ -30,5 +30,6 @@ router.patch(
 );
 
 router.delete("/:id", auth("admin"), productControllers.deleteProduct);
+router.post("/reorder", auth("admin"), productControllers.reorderProducts);
 
 export const productRouter = router;

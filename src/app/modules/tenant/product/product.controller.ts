@@ -138,6 +138,23 @@ const deleteProduct = catchAsync(async (req, res, next) => {
   });
 });
 
+const reorderProducts = catchAsync(async (req, res) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const { productOrders } = req.body;
+
+  const result = await productServices.reorderProductsIntoDB(
+    subdomain,
+    productOrders,
+  );
+
+  sendResponse(res, {
+    statusCode: status.OK,
+    success: true,
+    message: "Products reordered successfully",
+    data: result,
+  });
+});
+
 export const productControllers = {
   createProduct,
   getAllProducts,
@@ -145,4 +162,5 @@ export const productControllers = {
   getProductBySlug,
   updateProduct,
   deleteProduct,
+  reorderProducts,
 };

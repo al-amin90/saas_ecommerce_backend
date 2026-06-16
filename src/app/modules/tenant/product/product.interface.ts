@@ -33,4 +33,5 @@ export type TProduct = {
 
   isActive: boolean;
   isDeleted: boolean;
+  order?: number;
 };

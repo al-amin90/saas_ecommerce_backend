@@ -36,8 +36,10 @@ export const productSchema = new Schema<TProduct>(
     },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
+    order: { type: Number, default: 0 },
   },
   {
     timestamps: true,
   },
 );
+productSchema.index({ order: 1, createdAt: -1 });

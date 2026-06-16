@@ -10,11 +10,19 @@ import {
   uploadOnCloudinary,
 } from "../../../utils/cloudinary";
 import { getRemovedImages } from "../../../utils/getRemovedImages";
+import { Types } from "mongoose";
 
 const createProductIntoDB = async (subdomain: string, payload: TProduct) => {
-  const Product = await getTenantModel(subdomain, "Product");
+  const Product = await getTenantModel<TProduct>(subdomain, "Product");
+
+  const lastProduct = await Product.findOne({ isDeleted: false })
+    .sort({ order: -1 })
+    .select("order");
+
+  const maxOrder = lastProduct?.order ?? 0;
 
   payload.slug = slugify(payload.name, { lower: true, strict: true });
+  payload.order = maxOrder + 1;
 
   const result = await Product.create(payload);
   return result;
@@ -31,10 +39,12 @@ const getAllProductsFromDB = async (
   const searchFields = ["name", "description", "sku"];
 
   const builder = new QueryBuilder(
-    Product.find({ isDeleted: false }).populate([
-      { path: "categoryID", select: "name slug" },
-      { path: "variant.color", select: "name color" },
-    ]),
+    Product.find({ isDeleted: false })
+      .sort({ order: 1, createdAt: -1 })
+      .populate([
+        { path: "categoryID", select: "name slug" },
+        { path: "variant.color", select: "name color" },
+      ]),
     query,
   )
     .search(searchFields)
@@ -155,6 +165,33 @@ const deleteProductFromDB = async (subdomain: string, id: string) => {
   return result;
 };
 
+const reorderProductsIntoDB = async (
+  subdomain: string,
+  productOrders: { _id: string; order: number }[],
+) => {
+  const Product = await getTenantModel<TProduct>(subdomain, "Product");
+
+  const bulkOps = productOrders.map((item) => ({
+    updateOne: {
+      filter: { _id: new Types.ObjectId(item._id), isDeleted: false },
+      update: { $set: { order: item.order } },
+    },
+  }));
+
+  const result = await Product.bulkWrite(bulkOps);
+
+  // Return updated products in order
+  const updatedProducts = await Product.find({ isDeleted: false }).sort({
+    order: 1,
+    createdAt: -1,
+  });
+  // .populate("categoryID", "name")
+  // .populate("sizeChartId", "chartName")
+  // .populate("variant.color", "name color");
+
+  return updatedProducts;
+};
+
 export const productServices = {
   createProductIntoDB,
   getAllProductsFromDB,
@@ -162,4 +199,5 @@ export const productServices = {
   getProductBySlugFromDB,
   updateProductInDB,
   deleteProductFromDB,
+  reorderProductsIntoDB,
 };
