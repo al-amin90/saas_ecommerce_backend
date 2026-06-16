@@ -1432,11 +1432,11 @@ const handleCourierWebhookInDB = async (
       orderNumber: payload.merchant_order_id,
     });
 
-    if (!order) {
-      console.error(`❌ Order not found: ${payload.merchant_order_id}`);
+    // if (!order) {
+    //   console.error(`❌ Order not found: ${payload.merchant_order_id}`);
 
-      throw new AppError(404, "Order not found");
-    }
+    //   throw new AppError(404, "Order not found");
+    // }
 
     console.log(
       `✅ Order found: ${order.orderNumber} (Current status: ${order.orderStatus})`,

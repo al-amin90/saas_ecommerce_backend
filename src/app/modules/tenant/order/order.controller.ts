@@ -243,11 +243,16 @@ const receivePathaoWebhook = catchAsync(
         webhookSignature,
       );
 
+      res.setHeader(
+        "X-Pathao-Merchant-Webhook-Integration-Secret",
+        config.webhook_secret as string,
+      );
+
       // ✅ 202 respond করি (Webhook requirement)
       res.status(202).json({
         success: true,
         message: "Webhook received and processing",
-        data: result,
+        // data: result,
         // ✅ Required header (Pathao requirement)
         headers: {
           "X-Pathao-Merchant-Webhook-Integration-Secret": config.webhook_secret,
