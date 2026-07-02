@@ -72,7 +72,7 @@ const checkStockAvailability = async (
     }
 
     const variant = product.variant[variantIndex];
-    const sizeNum = parseInt(item.selectedSize);
+    const sizeNum = parseFloat(item.selectedSize);
 
     if (isNaN(sizeNum)) {
       throw new AppError(
@@ -146,7 +146,7 @@ const reduceStock = async (
     }
 
     const variant = product.variant[variantIndex];
-    const sizeNum = parseInt(item.selectedSize);
+    const sizeNum = parseFloat(item.selectedSize);
     const sizeStockIndex = variant.stock.findIndex((s) => s.size === sizeNum);
 
     if (sizeStockIndex === -1) {
@@ -195,7 +195,7 @@ const restoreStock = async (
     }
 
     const variant = product.variant[variantIndex];
-    const sizeNum = parseInt(item.selectedSize);
+    const sizeNum = parseFloat(item.selectedSize);
     const sizeStockIndex = variant.stock.findIndex((s) => s.size === sizeNum);
 
     if (sizeStockIndex === -1) {
