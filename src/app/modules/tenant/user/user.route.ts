@@ -7,7 +7,6 @@ const router = Router();
 
 router.post(
   "/register",
-  //   auth(USER_ROLE.admin, USER_ROLE.faculty),
   validateRequest(registerValidator),
   userController.createUser,
 );

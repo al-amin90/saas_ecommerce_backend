@@ -61,6 +61,16 @@ const orderSchema = new Schema<IOrder>(
       unique: true,
     },
     invoice_id: String,
+    courier: {
+      name: {
+        type: Schema.Types.ObjectId,
+        ref: "DeliveryMethod",
+        default: null,
+      },
+      consignmentId: { type: String, default: null },
+      trackingCode: { type: String, default: null },
+      status: { type: String, default: null },
+    },
   },
   { timestamps: true },
 );

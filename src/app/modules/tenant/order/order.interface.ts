@@ -53,6 +53,12 @@ export interface IOrder extends Document {
 
   // Tracking
   orderNumber: string;
+  courier?: {
+    name?: string;
+    consignmentId?: string;
+    trackingCode?: string;
+    status?: string;
+  };
 }
 
 export type DateRange =

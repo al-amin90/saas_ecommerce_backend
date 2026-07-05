@@ -25,166 +25,7 @@ import {
   startOfYear,
   startOfMonth,
 } from "date-fns";
-
-// ✅ Combined: Create Order + Submit to Courier (Transaction)
-// const createAndSubmitOrderInDB = async (
-//   subdomain: string,
-//   userId: string | undefined,
-//   payload: IOrder,
-// ) => {
-//   const session = await (
-//     await getTenantModel(subdomain, "Order")
-//   ).startSession();
-//   session.startTransaction();
-
-//   try {
-//     console.log("🔄 Starting transaction for order creation");
-
-//     const Order = await getTenantModel<IOrder>(subdomain, "Order");
-//     const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
-//       subdomain,
-//       "DeliveryMethod",
-//     );
-
-//     // ========== STEP 0: Stock Check করি ==========
-//     console.log("📌 Step 0: Validating stock availability...");
-
-//     const stockCheckResult =
-//       await stockValidationService.checkStockAvailability(
-//         subdomain,
-//         payload.items as any,
-//       );
-
-//     if (!stockCheckResult.isAvailable) {
-//       throw new AppError(
-//         status.BAD_REQUEST,
-//         `Insufficient stock: ${JSON.stringify(stockCheckResult.unavailableItems)}`,
-//       );
-//     }
-
-//     console.log("✅ Stock validation passed!");
-
-//     // ========== STEP 1: Order তৈরি করি ==========
-//     console.log("📝 Step 1: Creating order...");
-
-//     const orderCount = await Order.countDocuments({}, { session });
-//     const orderNumber = `${subdomain.toUpperCase()}-ORD-${Date.now()}-${orderCount + 1}`;
-
-//     const orderData = {
-//       userId: userId ? new Types.ObjectId(userId) : null,
-//       guestCheckout: payload.guestCheckout,
-//       guestEmail: payload.guestEmail,
-//       guestInfo: payload.guestInfo,
-//       items: payload.items,
-//       totalPrice: payload.totalPrice,
-//       paymentMethod: payload.paymentMethod,
-//       paymentStatus: "pending",
-//       orderStatus: "pending",
-//       orderNumber,
-//     };
-
-//     const [createdOrder] = await Order.create([orderData], { session });
-
-//     console.log("✅ Order created:", createdOrder._id);
-
-//     // ========== STEP 2: Delivery Method খুঁজি ==========
-//     console.log("📦 Step 2: Finding delivery method...");
-
-//     const deliveryMethod = await DeliveryMethod.findOne(
-//       {
-//         isActive: true,
-//       },
-//       null,
-//       { session },
-//     );
-
-//     if (!deliveryMethod) {
-//       throw new AppError(
-//         status.NOT_FOUND,
-//         "Delivery method not found or inactive",
-//       );
-//     }
-
-//     console.log("✅ Delivery method found");
-
-//     // ========== STEP 3: Courier এ order পাঠাই ==========
-//     console.log("🚚 Step 3: Submitting order to courier...");
-
-//     let courierTrackingId: string;
-//     let courierResponse: any;
-
-//     if (deliveryMethod.type === "PATHAO") {
-//       const environment = config.pathao_environment;
-//       const pathaoService = new PathaoService(environment);
-
-//       const guestInfo = createdOrder.guestInfo;
-
-//       const response = await pathaoService.createOrder(
-//         parseInt(deliveryMethod.clientStoreId),
-//         orderNumber,
-//         guestInfo.fullName,
-//         guestInfo.phone,
-//         guestInfo.address,
-//         createdOrder.items.length,
-//         0.5,
-//         createdOrder.totalPrice,
-//         `Order: ${orderNumber}`,
-//         `Items: ${createdOrder.items
-//           .map((i: any) => i.productId?.name || "Product")
-//           .join(", ")}`,
-//       );
-
-//       courierTrackingId = response.data.consignment_id;
-//       courierResponse = {
-//         consignment_id: response.data.consignment_id,
-//         merchant_order_id: response.data.merchant_order_id,
-//         order_status: response.data.order_status,
-//         delivery_fee: response.data.delivery_fee,
-//         environment: environment,
-//         createdAt: new Date(),
-//       };
-//     } else {
-//       throw new AppError(
-//         status.BAD_REQUEST,
-//         `Unsupported delivery method: ${deliveryMethod.type}`,
-//       );
-//     }
-
-//     // ========== STEP 4: Stock Reduce করি ==========
-//     console.log("📉 Step 4: Reducing stock...");
-
-//     await stockValidationService.reduceStock(subdomain, payload.items as any);
-
-//     console.log("✅ Stock reduced successfully");
-
-//     // ========== STEP 5: Order Update করি ==========
-//     console.log("✏️ Step 5: Updating order status...");
-
-//     const updatedOrder = await Order.findByIdAndUpdate(
-//       createdOrder._id,
-//       {
-//         $set: {
-//           orderStatus: "processing",
-//           deliveryMethodId: deliveryMethod._id,
-//           courierTrackingId: courierTrackingId,
-//           courierResponse: courierResponse,
-//         },
-//       },
-//       { new: true, session },
-//     ).populate("items.productId");
-
-//     await session.commitTransaction();
-//     console.log("✅ Transaction committed successfully!");
-
-//     return updatedOrder;
-//   } catch (error) {
-//     await session.abortTransaction();
-//     console.error("❌ Transaction aborted:", error);
-//     throw error;
-//   } finally {
-//     await session.endSession();
-//   }
-// };
+import { steadfastService } from "../courier/steadfast.service";
 
 const createOrderIntoDB = async (
   subdomain: string,
@@ -391,157 +232,6 @@ const submitSingleOrderToCourierInDB = async (
   }
 };
 
-// ✅ STEP 3: Multiple Orders কে Courier এ পাঠাই (Bulk)
-const submitBulkOrdersToCourierInDB = async (
-  subdomain: string,
-  orderIds: string[],
-) => {
-  console.log(`🔄 Submitting ${orderIds.length} orders to courier...`);
-
-  const Order = await getTenantModel<IOrder>(subdomain, "Order");
-  const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
-    subdomain,
-    "DeliveryMethod",
-  );
-  await getTenantModel(subdomain, "Product");
-
-  const results = {
-    successful: [] as any[],
-    failed: [] as {
-      orderId: string;
-      orderNumber: string;
-      error: string;
-    }[],
-  };
-
-  // Delivery Method খুঁজি একবার
-  const deliveryMethod = await DeliveryMethod.findOne({
-    isActive: true,
-  });
-
-  if (!deliveryMethod) {
-    throw new AppError(
-      status.NOT_FOUND,
-      "Delivery method not found or inactive",
-    );
-  }
-
-  if (deliveryMethod.type !== "PATHAO") {
-    throw new AppError(
-      status.BAD_REQUEST,
-      `Unsupported delivery method: ${deliveryMethod.type}`,
-    );
-  }
-
-  const environment = config.pathao_environment;
-
-  // this is for sandbox test
-  // const pathaoService = new PathaoService(environment, subdomain);
-
-  // this is for live
-  const pathaoService = await new PathaoService(environment, subdomain).init();
-
-  // প্রতিটি order এর জন্য loop করি
-  for (const orderId of orderIds) {
-    const session = await Order.startSession();
-    session.startTransaction();
-
-    try {
-      console.log(`\n📦 Processing Order: ${orderId}`);
-
-      // Order খুঁজি
-      const order = await Order.findOne(
-        {
-          _id: new Types.ObjectId(orderId),
-        },
-        null,
-        { session },
-      ).populate("items.productId");
-
-      if (!order) {
-        throw new Error("Order not found");
-      }
-
-      if (order.orderStatus !== "pending") {
-        throw new Error(`Current status: ${order.orderStatus}`);
-      }
-
-      const guestInfo = order.guestInfo;
-
-      // Courier এ পাঠাই
-      console.log(`🚚 Submitting to courier...`);
-
-      const response = await pathaoService.createOrder(
-        parseInt(deliveryMethod.clientStoreId),
-        deliveryMethod.merchantId,
-        guestInfo.fullName,
-        guestInfo.phone,
-        guestInfo.address,
-        order.items.length,
-        0.5,
-        order.totalPrice,
-        `Order: ${order.orderNumber}`,
-        `Items: ${order.items
-          .map((i: any) => i.productId?.name || "Product")
-          .join(", ")}`,
-      );
-
-      console.log("response", response);
-
-      // Order Update করি
-      const updatedOrder = await Order.findByIdAndUpdate(
-        orderId,
-        {
-          $set: {
-            orderStatus: "processing",
-            deliveryMethodId: deliveryMethod._id,
-            courierTrackingId: response.data.consignment_id,
-            courierResponse: {
-              consignment_id: response.data.consignment_id,
-              merchant_order_id: response.data.merchant_order_id,
-              order_status: response.data.order_status,
-              delivery_fee: response.data.delivery_fee,
-              environment: environment,
-              createdAt: new Date(),
-            },
-          },
-        },
-        { new: true, session },
-      ).populate("items.productId");
-
-      await session.commitTransaction();
-
-      console.log(`✅ Order submitted: ${order.orderNumber}`);
-
-      results.successful.push(updatedOrder);
-    } catch (error: any) {
-      await session.abortTransaction();
-
-      console.error(`❌ Failed to submit order ${orderId}:`, error.message);
-
-      const order = await Order.findById(orderId);
-
-      results.failed.push({
-        orderId,
-        orderNumber: order?.orderNumber || "Unknown",
-        error: error.message,
-      });
-
-      throw new AppError(
-        status.BAD_REQUEST,
-        `${order?.orderNumber} is ${error.message}` || `Something Went Wrong`,
-      );
-    } finally {
-      await session.endSession();
-    }
-  }
-
-  console.log(
-    `\n📊 Bulk submission complete: ${results.successful.length} successful, ${results.failed.length} failed`,
-  );
-
-  return results;
-};
 const getAllOrdersFromDB = async (
   subdomain: string,
   query: {
@@ -1403,6 +1093,309 @@ const getRevenueReportFromDB = async (
   }
 };
 
+const submitBulkOrdersToPathaoCourierInDB = async (
+  subdomain: string,
+  orderIds: string[],
+  delivaryMethodId: Types.ObjectId,
+) => {
+  console.log(`🔄 Submitting ${orderIds.length} orders to courier...`);
+
+  const Order = await getTenantModel<IOrder>(subdomain, "Order");
+  const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
+    subdomain,
+    "DeliveryMethod",
+  );
+  await getTenantModel(subdomain, "Product");
+
+  const results = {
+    successful: [] as any[],
+    failed: [] as {
+      orderId: string;
+      orderNumber: string;
+      error: string;
+    }[],
+  };
+
+  // Delivery Method খুঁজি একবার
+  const deliveryMethod = await DeliveryMethod.findOne({
+    type: "PATHAO",
+    isActive: true,
+  });
+
+  if (!deliveryMethod) {
+    throw new AppError(
+      status.NOT_FOUND,
+      "Delivery method PATHAO not found or inactive",
+    );
+  }
+
+  if (deliveryMethod.type !== "PATHAO") {
+    throw new AppError(
+      status.BAD_REQUEST,
+      `Unsupported delivery method: ${deliveryMethod.type}`,
+    );
+  }
+
+  const environment = config.pathao_environment;
+
+  // this is for sandbox test
+  // const pathaoService = new PathaoService(environment, subdomain);
+
+  // this is for live
+  const pathaoService = await new PathaoService(environment, subdomain).init();
+
+  // প্রতিটি order এর জন্য loop করি
+  for (const orderId of orderIds) {
+    const session = await Order.startSession();
+    session.startTransaction();
+
+    try {
+      console.log(`\n📦 Processing Order: ${orderId}`);
+
+      // Order খুঁজি
+      const order = await Order.findOne(
+        {
+          _id: new Types.ObjectId(orderId),
+        },
+        null,
+        { session },
+      ).populate("items.productId");
+
+      if (!order) {
+        throw new Error("Order not found");
+      }
+
+      if (order.orderStatus !== "pending") {
+        throw new Error(`Current status: ${order.orderStatus}`);
+      }
+
+      const guestInfo = order.guestInfo;
+
+      // Courier এ পাঠাই
+      console.log(`🚚 Submitting to courier...`);
+
+      const response = await pathaoService.createOrder(
+        parseInt(deliveryMethod.clientStoreId),
+        deliveryMethod.merchantId,
+        guestInfo.fullName,
+        guestInfo.phone,
+        guestInfo.address,
+        order.items.length,
+        0.5,
+        order.totalPrice,
+        `Order: ${order.orderNumber}`,
+        `Items: ${order.items
+          .map((i: any) => i.productId?.name || "Product")
+          .join(", ")}`,
+      );
+
+      console.log("response", response);
+
+      // Order Update করি
+      const updatedOrder = await Order.findByIdAndUpdate(
+        orderId,
+        {
+          $set: {
+            orderStatus: "processing",
+            deliveryMethodId: deliveryMethod._id,
+            courierTrackingId: response.data.consignment_id,
+            courier: {
+              consignmentId: response.data.consignment_id,
+              delivaryMethodId: response.data.consignment_id,
+              status: response.data.order_status,
+              name: delivaryMethodId,
+              environment: environment,
+              createdAt: new Date(),
+            },
+          },
+        },
+        { new: true, session },
+      ).populate("items.productId");
+
+      await session.commitTransaction();
+
+      console.log(`✅ Order submitted: ${order.orderNumber}`);
+
+      results.successful.push(updatedOrder);
+    } catch (error: any) {
+      await session.abortTransaction();
+
+      console.error(`❌ Failed to submit order ${orderId}:`, error.message);
+
+      const order = await Order.findById(orderId);
+
+      results.failed.push({
+        orderId,
+        orderNumber: order?.orderNumber || "Unknown",
+        error: error.message,
+      });
+
+      throw new AppError(
+        status.BAD_REQUEST,
+        `${order?.orderNumber} is ${error.message}` || `Something Went Wrong`,
+      );
+    } finally {
+      await session.endSession();
+    }
+  }
+
+  console.log(
+    `\n📊 Bulk submission complete: ${results.successful.length} successful, ${results.failed.length} failed`,
+  );
+
+  return results;
+};
+
+const sendBulkOrdersToSteadfast = async (
+  subdomain: string,
+  orderIds: string[],
+  delivaryMethodId: Types.ObjectId,
+) => {
+  const Order = await getTenantModel<IOrder>(subdomain, "Order");
+
+  const orders = await Order.find({
+    _id: { $in: orderIds.map((id: string) => new Types.ObjectId(id)) },
+  });
+
+  console.log(`📋 Found ${orders.length} orders to submit`);
+
+  if (orders.length === 0) {
+    return {
+      status: 404,
+      message: "No orders found",
+      data: [],
+      errors: orderIds.map((id) => ({ orderId: id, error: "Order not found" })),
+    };
+  }
+
+  const results = [];
+  const errors = [];
+
+  for (const order of orders) {
+    try {
+      let phone = order.guestInfo?.phone || "";
+      phone = phone.replace(/[^0-9]/g, "");
+      if (!phone.startsWith("88")) {
+        phone = `88${phone}`;
+      }
+
+      const orderData = {
+        invoice: order.orderNumber,
+        recipient_name: order.guestInfo?.fullName ?? "Customer",
+        recipient_phone: phone,
+        recipient_address: `${order.guestInfo?.address || ""}, ${order.guestInfo?.city || ""}`,
+        cod_amount: Number(order.totalPrice) || 0,
+        note: `Order: ${order.orderNumber}`,
+      };
+
+      const result = await steadfastService.createSingleSteadfastOrder(
+        subdomain,
+        orderData,
+      );
+
+      // Different possible response structures
+      let consignmentId = null;
+      let trackingCode = null;
+      let status = null;
+
+      // Try to find consignment data in different possible locations
+      if (result?.data?.consignment) {
+        // Structure 1: { data: { consignment: { ... } } }
+        consignmentId = result.data.consignment.consignment_id;
+        trackingCode = result.data.consignment.tracking_code;
+        status = result.data.consignment.status;
+      } else if (result?.consignment) {
+        // Structure 2: { consignment: { ... } }
+        consignmentId = result.consignment.consignment_id;
+        trackingCode = result.consignment.tracking_code;
+        status = result.consignment.status;
+      } else if (result?.data?.consignment_id) {
+        // Structure 3: { data: { consignment_id: ... } }
+        consignmentId = result.data.consignment_id;
+        trackingCode = result.data.tracking_code;
+        status = result.data.status;
+      } else if (result?.consignment_id) {
+        // Structure 4: { consignment_id: ... }
+        consignmentId = result.consignment_id;
+        trackingCode = result.tracking_code;
+        status = result.status;
+      } else {
+        // Log the actual response for debugging
+        console.error(
+          `Unexpected response structure for ${order.orderNumber}:`,
+        );
+        console.error(JSON.stringify(result, null, 2));
+      }
+
+      if (consignmentId) {
+        // Update order with courier info
+        await Order.findOneAndUpdate(
+          { orderNumber: order.orderNumber },
+          {
+            "courier.name": delivaryMethodId,
+            "courier.consignmentId": consignmentId,
+            "courier.trackingCode": trackingCode || "",
+            "courier.status": status || "pending",
+            orderStatus: "processing",
+          },
+        );
+
+        results.push({
+          invoice: order.orderNumber,
+          success: true,
+          consignmentId: consignmentId,
+          trackingCode: trackingCode,
+        });
+      } else {
+        // No consignment ID found
+        const errorMsg = result?.message || "No consignment ID returned";
+        errors.push({
+          invoice: order.orderNumber,
+          error: errorMsg,
+          response: result,
+        });
+        console.error(
+          `❌ No consignment ID for ${order.orderNumber}:`,
+          errorMsg,
+        );
+      }
+    } catch (error: any) {
+      console.error(
+        `❌ Error sending order ${order.orderNumber}:`,
+        error.message,
+      );
+
+      // Check if it's a validation error from Steadfast
+      if (error.response?.data) {
+        console.error(
+          "Steadfast error response:",
+          JSON.stringify(error.response.data, null, 2),
+        );
+        errors.push({
+          invoice: order.orderNumber,
+          error: error.response.data.message || error.message,
+          details: error.response.data,
+        });
+      } else {
+        errors.push({
+          invoice: order.orderNumber,
+          error: error.message,
+        });
+      }
+    }
+  }
+
+  return {
+    status: 200,
+    message: `${results.length} orders submitted successfully, ${errors.length} failed`,
+    data: results,
+    errors: errors,
+    total: orders.length,
+    success: results.length,
+    failed: errors.length,
+  };
+};
+
 // ✅ Webhook handler
 const handleCourierWebhookInDB = async (
   subdomain: string,
@@ -1410,14 +1403,6 @@ const handleCourierWebhookInDB = async (
   signature: string,
 ) => {
   try {
-    console.log("🔔 Webhook received");
-
-    console.log("📨 Webhook received:", {
-      event: payload.event,
-      merchant_order_id: payload.merchant_order_id,
-      consignment_id: payload.consignment_id,
-    });
-
     // 1. Verify webhook signature
     const isValid = PathaoService.verifyWebhookSignature(payload, signature);
     if (!isValid) {
@@ -1425,7 +1410,6 @@ const handleCourierWebhookInDB = async (
       throw new Error("Invalid webhook signature");
     }
 
-    console.log("✅ Signature verified!");
     // 2. Find order by orderNumber (which you sent as merchant_order_id)
     const Order = await getTenantModel<IOrder>(subdomain, "Order");
     const order = await Order.findOne({
@@ -1438,9 +1422,6 @@ const handleCourierWebhookInDB = async (
       throw new AppError(404, "Order not found");
     }
 
-    console.log(
-      `✅ Order found: ${order.orderNumber} (Current status: ${order.orderStatus})`,
-    );
     let newOrderStatus = order.orderStatus;
     let newPaymentStatus = order.paymentStatus;
     let updateData: any = {};
@@ -1589,7 +1570,8 @@ export default {
   // createAndSubmitOrderInDB,
   createOrderIntoDB,
   submitSingleOrderToCourierInDB,
-  submitBulkOrdersToCourierInDB,
+  submitBulkOrdersToPathaoCourierInDB,
+  sendBulkOrdersToSteadfast,
   getAllOrdersFromDB,
   getOrderByIdFromDB,
   getGuestOrderFromDB,

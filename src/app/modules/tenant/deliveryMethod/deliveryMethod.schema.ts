@@ -17,32 +17,26 @@ const deliveryMethodSchema = new Schema<IDeliveryMethod>(
     },
     accountPhone: {
       type: String,
-      required: true,
       trim: true,
     },
     clientId: {
       type: String,
-      required: true,
       trim: true,
     },
     clientSecret: {
       type: String,
-      required: true,
       trim: true,
     },
     clientEmail: {
       type: String,
-      required: true,
       lowercase: true,
       trim: true,
     },
     clientPassword: {
       type: String,
-      required: true,
     },
     clientStoreId: {
       type: String,
-      required: true,
       trim: true,
     },
     merchantId: {
@@ -63,7 +57,7 @@ const deliveryMethodSchema = new Schema<IDeliveryMethod>(
     },
     isActive: {
       type: Boolean,
-      default: true,
+      default: false,
     },
   },
   { timestamps: true },

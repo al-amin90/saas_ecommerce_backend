@@ -1,0 +1,168 @@
+import { Request, Response } from "express";
+import httpStatus from "http-status";
+import catchAsync from "../../../utils/catchAsync";
+import sendResponse from "../../../utils/SendResponse";
+import { steadfastService } from "./steadfast.service";
+import orderService from "../order/order.service";
+import { getTenantModel } from "../../../utils/getTenantModel";
+import { Types } from "mongoose";
+
+// ── Send Single Order to Steadfast ────────────────────────────────────────────
+
+const sendOrderToSteadfast = catchAsync(async (req: Request, res: Response) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const { orderId } = req.params;
+
+  // order data fetch করো
+  const Order = await getTenantModel(subdomain, "Order");
+  const order = await Order.findOne({
+    _id: new Types.ObjectId(orderId),
+    tenantId: subdomain,
+  });
+
+  if (!order) throw new Error("Order not found");
+
+  const payload = {
+    invoice: order.orderNumber,
+    recipient_name: order.guestInfo?.fullName ?? "Customer",
+    recipient_phone: order.guestInfo?.phone ?? "",
+    recipient_address: `${order.guestInfo?.address}, ${order.guestInfo?.city}`,
+    cod_amount: order.totalPrice,
+    note: `Order: ${order.orderNumber}`,
+  };
+
+  const result = await steadfastService.createSteadfastOrder(
+    subdomain,
+    payload,
+  );
+
+  // consignment_id save করো order এ
+  if (result?.consignment?.consignment_id) {
+    await Order.findByIdAndUpdate(orderId, {
+      "courier.name": "steadfast",
+      "courier.consignmentId": result.consignment.consignment_id,
+      "courier.trackingCode": result.consignment.tracking_code,
+      "courier.status": result.consignment.status,
+      orderStatus: "processing",
+    });
+  }
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Order sent to Steadfast successfully",
+    data: result,
+  });
+});
+
+// ── Send Bulk Orders ──────────────────────────────────────────────────────────
+
+const sendBulkOrdersToSteadfast = catchAsync(
+  async (req: Request, res: Response) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { orderIds } = req.body; // string[]
+
+    const Order = await getTenantModel(subdomain, "Order");
+
+    const orders = await Order.find({
+      _id: { $in: orderIds.map((id: string) => new Types.ObjectId(id)) },
+      tenantId: subdomain,
+    });
+
+    const payload = orders.map((order: any) => ({
+      invoice: order.orderNumber,
+      recipient_name: order.guestInfo?.fullName ?? "Customer",
+      recipient_phone: order.guestInfo?.phone ?? "",
+      recipient_address: `${order.guestInfo?.address}, ${order.guestInfo?.city}`,
+      cod_amount: order.totalPrice,
+      note: `Order: ${order.orderNumber}`,
+    }));
+
+    const result = await steadfastService.createBulkSteadfastOrders(
+      subdomain,
+      payload,
+    );
+
+    // bulk result process করো
+    if (result?.data?.length) {
+      for (const item of result.data) {
+        if (item.consignment?.consignment_id) {
+          await Order.findOneAndUpdate(
+            { orderNumber: item.invoice, tenantId: subdomain },
+            {
+              "courier.name": "steadfast",
+              "courier.consignmentId": item.consignment.consignment_id,
+              "courier.trackingCode": item.consignment.tracking_code,
+              "courier.status": item.consignment.status,
+              orderStatus: "processing",
+            },
+          );
+        }
+      }
+    }
+
+    sendResponse(res, {
+      statusCode: httpStatus.OK,
+      success: true,
+      message: "Bulk orders sent to Steadfast",
+      data: result,
+    });
+  },
+);
+
+// ── Track Order ───────────────────────────────────────────────────────────────
+
+const trackOrder = catchAsync(async (req: Request, res: Response) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const { trackingCode } = req.params;
+
+  const result = await steadfastService.trackByTrackingCode(
+    subdomain,
+    trackingCode,
+  );
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Tracking info retrieved",
+    data: result,
+  });
+});
+
+// ── Track by Invoice ──────────────────────────────────────────────────────────
+
+const trackByInvoice = catchAsync(async (req: Request, res: Response) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const { invoice } = req.params;
+
+  const result = await steadfastService.trackByInvoice(subdomain, invoice);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Tracking info retrieved",
+    data: result,
+  });
+});
+
+// ── Check Balance ─────────────────────────────────────────────────────────────
+
+const checkBalance = catchAsync(async (req: Request, res: Response) => {
+  const subdomain = req.headers["x-tenant"] as string;
+  const result = await steadfastService.checkSteadfastBalance(subdomain);
+
+  sendResponse(res, {
+    statusCode: httpStatus.OK,
+    success: true,
+    message: "Balance retrieved",
+    data: result,
+  });
+});
+
+export const steadfastController = {
+  sendOrderToSteadfast,
+  sendBulkOrdersToSteadfast,
+  trackOrder,
+  trackByInvoice,
+  checkBalance,
+};

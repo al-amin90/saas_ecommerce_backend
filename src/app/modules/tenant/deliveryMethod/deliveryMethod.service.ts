@@ -3,38 +3,6 @@ import axios from "axios";
 import { IDeliveryMethod } from "./deliveryMethod.interface";
 import { Types } from "mongoose";
 
-import crypto from "crypto";
-import config from "../../../config";
-
-// Courier API endpoints
-const COURIER_APIs = {
-  PATHAO: {
-    baseUrl: "https://aladdin-api.pathao.com",
-    endpoints: {
-      createOrder: "/aladdin/api/v1/orders",
-      getStatus: "/aladdin/api/v1/orders/:id",
-    },
-  },
-  REDX: {
-    baseUrl: "https://api.redx.com",
-    endpoints: {
-      createOrder: "/v1/parcels",
-    },
-  },
-  STEDFAST: {
-    baseUrl: "https://api.stedfast.com.bd",
-    endpoints: {
-      createOrder: "/api/v2/create_order",
-    },
-  },
-  CARRYBEE: {
-    baseUrl: "https://api.carrybee.com",
-    endpoints: {
-      createOrder: "/api/parcel/create",
-    },
-  },
-};
-
 // ✅ CREATE - নতুন Delivery Method যোগ করি
 const createDeliveryMethodInDB = async (
   subdomain: string,

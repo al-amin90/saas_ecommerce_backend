@@ -10,6 +10,8 @@ import deliveryMethodService from "../deliveryMethod/deliveryMethod.service";
 import config from "../../../config";
 import AppError from "../../../errors/AppError";
 import { DateRange } from "./order.interface";
+import { getTenantModel } from "../../../utils/getTenantModel";
+import { IDeliveryMethod } from "../deliveryMethod/deliveryMethod.interface";
 
 const createOrder = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
@@ -53,28 +55,6 @@ const submitSingleOrderToCourier = catchAsync(
       statusCode: status.OK,
       success: true,
       message: "Order submitted to courier successfully",
-      data: result,
-    });
-  },
-);
-
-// ✅ Submit Bulk Orders to Courier
-const submitBulkOrdersToCourier = catchAsync(
-  async (req: Request, res: Response, next: NextFunction) => {
-    const subdomain = req.headers["x-tenant"] as string;
-    const { orderIds } = req.body;
-
-    console.log(`🚚 Submitting ${orderIds.length} orders to courier...`);
-
-    const result = await orderService.submitBulkOrdersToCourierInDB(
-      subdomain,
-      orderIds,
-    );
-
-    sendResponse(res, {
-      statusCode: status.OK,
-      success: true,
-      message: "Bulk orders submitted",
       data: result,
     });
   },
@@ -218,6 +198,51 @@ const getDashboardStats = catchAsync(async (req, res) => {
     data: result,
   });
 });
+
+// ---------------------------submit to couriar
+// Submit Bulk Orders to Courier
+const submitBulkOrdersToCourier = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { orderIds } = req.body;
+
+    const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
+      subdomain,
+      "DeliveryMethod",
+    );
+
+    const deliveryMethod = await DeliveryMethod.findOne({
+      isActive: true,
+    });
+
+    if (!deliveryMethod) {
+      throw new AppError(status.NOT_FOUND, "No active delivery method found");
+    }
+    console.log(`🚚 Submitting ${orderIds.length} orders to courier...`);
+
+    let result = null;
+    if (deliveryMethod.type === "PATHAO") {
+      result = await orderService.submitBulkOrdersToPathaoCourierInDB(
+        subdomain,
+        orderIds,
+        deliveryMethod._id,
+      );
+    } else if (deliveryMethod.type === "STEDFAST") {
+      result = await orderService.sendBulkOrdersToSteadfast(
+        subdomain,
+        orderIds,
+        deliveryMethod._id,
+      );
+    }
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Bulk orders submitted",
+      data: result,
+    });
+  },
+);
 
 const receivePathaoWebhook = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
