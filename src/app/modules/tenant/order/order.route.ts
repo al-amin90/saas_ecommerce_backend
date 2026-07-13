@@ -10,7 +10,6 @@ const router = Router();
 
 router.post(
   "/",
-  auth("admin"),
   validateRequest(orderValidations.createOrderSchema),
   orderController.createOrder,
 );
@@ -41,7 +40,12 @@ router.patch(
 );
 router.patch("/:orderId/cancel", auth("admin"), orderController.cancelOrder);
 
-router.post("/webhook/pathao/:subdomain", orderController.receivePathaoWebhook);
 router.get("/report/revenue", auth("admin"), orderController.getRevenueReport);
 
+// webhook here
+router.post("/webhook/pathao/:subdomain", orderController.receivePathaoWebhook);
+router.post(
+  "/webhook/steadfast/:subdomain",
+  orderController.receiveSteadfastWebhook,
+);
 export const orderRouter = router;

@@ -199,6 +199,38 @@ const getDashboardStats = catchAsync(async (req, res) => {
   });
 });
 
+const getRevenueReport = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const { type, years, months, startDate, endDate } = req.query;
+
+    const parsedYears = years
+      ? String(years).split(",").map(Number)
+      : undefined;
+    const parsedMonths = months
+      ? String(months).split(",").map(Number)
+      : undefined;
+
+    console.log("parsedMonths", parsedMonths);
+
+    const result = await orderService.getRevenueReportFromDB(
+      subdomain,
+      (type as "monthly" | "yearly" | "daily") ?? "monthly",
+      parsedYears,
+      parsedMonths,
+      startDate as string | undefined,
+      endDate as string | undefined,
+    );
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Revenue report retrieved successfully",
+      data: result,
+    });
+  },
+);
+
 // ---------------------------submit to couriar
 // Submit Bulk Orders to Courier
 const submitBulkOrdersToCourier = catchAsync(
@@ -244,16 +276,11 @@ const submitBulkOrdersToCourier = catchAsync(
   },
 );
 
+// --------------------------- couriar webhok
 const receivePathaoWebhook = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const subdomain =
       (req.headers["x-tenant"] as string) || (req.params.subdomain as string);
-
-    // ✅ Log করি যে webhook আসছে
-    console.log("🔔 Webhook Received:");
-    console.log("Headers:", req.headers);
-    console.log("Body:", req.body);
-    console.log("subdomain:", subdomain);
 
     const payload = req.body;
 
@@ -261,73 +288,71 @@ const receivePathaoWebhook = catchAsync(
     const webhookSignature = req.headers["x-pathao-signature"] as string;
     console.log("Signature received:", webhookSignature);
 
-    try {
-      const result = await orderService.handleCourierWebhookInDB(
-        subdomain,
-        payload,
-        webhookSignature,
-      );
+    const result = await orderService.handleCourierWebhookInDB(
+      subdomain,
+      payload,
+      webhookSignature,
+    );
 
-      res.setHeader(
-        "X-Pathao-Merchant-Webhook-Integration-Secret",
-        config.webhook_secret as string,
-      );
+    res.setHeader(
+      "X-Pathao-Merchant-Webhook-Integration-Secret",
+      config.webhook_secret as string,
+    );
 
-      // ✅ 202 respond করি (Webhook requirement)
-      res.status(202).json({
-        success: true,
-        message: "Webhook received and processing",
-        // data: result,
-        // ✅ Required header (Pathao requirement)
-        headers: {
-          "X-Pathao-Merchant-Webhook-Integration-Secret": config.webhook_secret,
-        },
-      });
-    } catch (error) {
-      console.error("❌ Webhook error:", error);
-      res.setHeader(
-        "X-Pathao-Merchant-Webhook-Integration-Secret",
-        config.webhook_secret as string,
-      );
-
-      // ✅ Even on error, return 202 (Courier requirement)
-      res.status(202).json({
-        success: false,
-        message: "Webhook processing failed",
-        error: (error as Error).message,
-      });
-    }
+    res.status(202).json({
+      success: true,
+      message: "Webhook received and processing",
+      // ✅ Required header (Pathao requirement)
+      headers: {
+        "X-Pathao-Merchant-Webhook-Integration-Secret": config.webhook_secret,
+      },
+    });
   },
 );
 
-const getRevenueReport = catchAsync(
+const receiveSteadfastWebhook = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
-    const subdomain = req.headers["x-tenant"] as string;
-    const { type, years, months, startDate, endDate } = req.query;
+    const subdomain =
+      (req.headers["x-tenant"] as string) || (req.params.subdomain as string);
 
-    const parsedYears = years
-      ? String(years).split(",").map(Number)
-      : undefined;
-    const parsedMonths = months
-      ? String(months).split(",").map(Number)
-      : undefined;
+    const payload = req.body;
 
-    console.log("parsedMonths", parsedMonths);
-
-    const result = await orderService.getRevenueReportFromDB(
-      subdomain,
-      (type as "monthly" | "yearly" | "daily") ?? "monthly",
-      parsedYears,
-      parsedMonths,
-      startDate as string | undefined,
-      endDate as string | undefined,
+    console.log(
+      "📦 Steadfast Webhook received:",
+      JSON.stringify(payload, null, 2),
     );
 
-    sendResponse(res, {
-      statusCode: status.OK,
-      success: true,
-      message: "Revenue report retrieved successfully",
-      data: result,
+    // Bearer token verify করো
+    const authHeader = req.headers["authorization"] as string;
+    const token = authHeader?.replace("Bearer ", "");
+
+    const DeliveryMethod = await getTenantModel<IDeliveryMethod>(
+      subdomain,
+      "DeliveryMethod",
+    );
+
+    const deliveryMethod = await DeliveryMethod.findOne({
+      type: "STEDFAST",
+    });
+
+    console.log("deliveryMethod", deliveryMethod);
+    console.log("token", token);
+
+    if (deliveryMethod && token && token !== config.webhook_sass_secret) {
+      console.warn("⚠️ Steadfast webhook token mismatch");
+      // Steadfast এর জন্য 200 return করো — না হলে retry করবে
+      return res.status(200).json({
+        status: "error",
+        message: "Invalid token",
+      });
+    }
+
+    await orderService.handleSteadfastWebhookInDB(subdomain, payload);
+
+    // Steadfast এর required response
+    res.status(200).json({
+      status: "success",
+      message: "Webhook received successfully.",
     });
   },
 );
@@ -344,4 +369,5 @@ export const orderController = {
   getDashboardStats,
   receivePathaoWebhook,
   getRevenueReport,
+  receiveSteadfastWebhook,
 };

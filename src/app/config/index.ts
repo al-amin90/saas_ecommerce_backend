@@ -19,6 +19,8 @@ export default {
   webhook_secret: process.env.WEBHOOK_SECRET,
   webhook_url: process.env.WEBHOOK_URL,
 
+  webhook_sass_secret: process.env.WEBHOOK_SASS_SECRET,
+
   jwt: {
     access_token: process.env.JWT_ACCESS_TOKEN as string,
     refresh_token: process.env.JWT_REFRESH_TOKEN as string,

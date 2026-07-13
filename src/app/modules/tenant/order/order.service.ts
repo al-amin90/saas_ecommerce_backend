@@ -1396,7 +1396,7 @@ const sendBulkOrdersToSteadfast = async (
   };
 };
 
-// ✅ Webhook handler
+// -----------------------( Webhook handler
 const handleCourierWebhookInDB = async (
   subdomain: string,
   payload: any,
@@ -1431,10 +1431,10 @@ const handleCourierWebhookInDB = async (
       case "order.created":
         newOrderStatus = "processing";
         updateData = {
-          "courierResponse.consignment_id": payload.consignment_id,
-          "courierResponse.updated_at": payload.updated_at,
-          "courierResponse.delivery_fee": payload.delivery_fee,
-          "courierResponse.last_event": payload.event,
+          "courier.consignment_id": payload.consignment_id,
+          "courier.updated_at": payload.updated_at,
+          "courier.delivery_fee": payload.delivery_fee,
+          "courier.last_event": payload.event,
         };
         console.log(`📦 Order ${order.orderNumber} created in courier system`);
         break;
@@ -1443,9 +1443,9 @@ const handleCourierWebhookInDB = async (
       case "order.paid":
         newPaymentStatus = "paid";
         updateData = {
-          "courierResponse.invoice_id": payload.invoice_id,
-          "courierResponse.paid_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.invoice_id": payload.invoice_id,
+          "courier.paid_at": payload.updated_at,
+          "courier.last_event": payload.event,
           invoice_id: payload.invoice_id,
         };
         console.log(`💰 Order ${order.orderNumber} payment received`);
@@ -1455,8 +1455,8 @@ const handleCourierWebhookInDB = async (
       case "order.picked":
         newOrderStatus = "shipped";
         updateData = {
-          "courierResponse.picked_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.picked_at": payload.updated_at,
+          "courier.last_event": payload.event,
         };
         console.log(`🚚 Order ${order.orderNumber} picked up for delivery`);
         break;
@@ -1465,12 +1465,12 @@ const handleCourierWebhookInDB = async (
       case "order.delivered":
         newOrderStatus = "delivered";
         // ✅ If payment method is cash, mark as paid on delivery
-        if (order.paymentMethod === "cash") {
-          newPaymentStatus = "paid";
-        }
+
+        newPaymentStatus = "paid";
+
         updateData = {
-          "courierResponse.delivered_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.delivered_at": payload.updated_at,
+          "courier.last_event": payload.event,
         };
         console.log(`✅ Order ${order.orderNumber} delivered successfully!`);
         break;
@@ -1479,9 +1479,9 @@ const handleCourierWebhookInDB = async (
       case "order.delivery-failed":
         newOrderStatus = "delivery_failed";
         updateData = {
-          "courierResponse.failed_reason": payload.reason || "Unknown reason",
-          "courierResponse.failed_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.failed_reason": payload.reason || "Unknown reason",
+          "courier.failed_at": payload.updated_at,
+          "courier.last_event": payload.event,
         };
         console.log(
           `❌ Order ${order.orderNumber} delivery failed: ${payload.reason}`,
@@ -1492,9 +1492,9 @@ const handleCourierWebhookInDB = async (
       case "order.exchanged":
         newOrderStatus = "exchanged";
         updateData = {
-          "courierResponse.exchanged_at": payload.updated_at,
-          "courierResponse.collected_amount": payload.collected_amount,
-          "courierResponse.last_event": payload.event,
+          "courier.exchanged_at": payload.updated_at,
+          "courier.collected_amount": payload.collected_amount,
+          "courier.last_event": payload.event,
         };
         console.log(
           `🔄 Order ${order.orderNumber} exchanged (Collected: ${payload.collected_amount})`,
@@ -1509,8 +1509,8 @@ const handleCourierWebhookInDB = async (
           newPaymentStatus = "refunded";
         }
         updateData = {
-          "courierResponse.cancelled_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.cancelled_at": payload.updated_at,
+          "courier.last_event": payload.event,
         };
         console.log(`❌ Order ${order.orderNumber} cancelled`);
         break;
@@ -1523,8 +1523,8 @@ const handleCourierWebhookInDB = async (
           newPaymentStatus = "refunded";
         }
         updateData = {
-          "courierResponse.returned_at": payload.updated_at,
-          "courierResponse.last_event": payload.event,
+          "courier.returned_at": payload.updated_at,
+          "courier.last_event": payload.event,
         };
         console.log(`🔄 Order ${order.orderNumber} returned`);
         break;
@@ -1566,6 +1566,93 @@ const handleCourierWebhookInDB = async (
   }
 };
 
+const handleSteadfastWebhookInDB = async (
+  subdomain: string,
+  payload: {
+    notification_type: "delivery_status" | "tracking_update";
+    consignment_id: number;
+    invoice: string;
+    cod_amount?: number;
+    status?: string;
+    delivery_charge?: number;
+    tracking_message?: string;
+    updated_at?: string;
+  },
+) => {
+  try {
+    const Order = await getTenantModel(subdomain, "Order");
+
+    console.log(
+      `📬 Steadfast webhook: ${payload.notification_type} for invoice ${payload.invoice}`,
+    );
+
+    // invoice দিয়ে order খোঁজো
+    const order = await Order.findOne({
+      orderNumber: payload.invoice,
+    });
+
+    if (!order) {
+      console.warn(`⚠️ Order not found for invoice: ${payload.invoice}`);
+      return null;
+    }
+
+    // ── Delivery Status Update ─────────────────────────────────────────────
+    if (payload.notification_type === "delivery_status") {
+      const statusMap: Record<string, string> = {
+        pending: "processing",
+        delivered: "delivered",
+        partial_delivered: "shipped",
+        cancelled: "cancelled",
+        unknown: "processing",
+      };
+
+      const newOrderStatus =
+        statusMap[payload.status?.toLowerCase() ?? ""] ?? "processing";
+
+      const updated = await Order.findOneAndUpdate(
+        { orderNumber: payload.invoice },
+        {
+          orderStatus: newOrderStatus,
+          invoice_id: payload.invoice,
+          "courier.status": payload.status,
+          "courier.trackingCode": payload.tracking_message,
+
+          // delivered হলে payment complete করো
+          ...(newOrderStatus === "delivered" && {
+            paymentStatus: "paid",
+          }),
+        },
+        { new: true },
+      );
+
+      console.log("updated", updated);
+
+      console.log(`✅ Order ${payload.invoice} status → ${newOrderStatus}`);
+    }
+
+    // ── Tracking Update ────────────────────────────────────────────────────
+    if (payload.notification_type === "tracking_update") {
+      await Order.findOneAndUpdate(
+        { orderNumber: payload.invoice },
+        {
+          "courier.trackingCode": payload.tracking_message,
+          // "courier.updatedAt": payload.updated_at,
+        },
+        { new: true },
+      );
+
+      console.log(
+        `📍 Tracking update for ${payload.invoice}: ${payload.tracking_message}`,
+      );
+    }
+
+    return order;
+  } catch (error) {
+    console.error("❌ Steadfast webhook error:", error);
+    throw error;
+  }
+};
+
 export default {
   // createAndSubmitOrderInDB,
   createOrderIntoDB,
@@ -1580,4 +1667,5 @@ export default {
   getDashboardStatsFromDB,
   handleCourierWebhookInDB,
   getRevenueReportFromDB,
+  handleSteadfastWebhookInDB,
 };
