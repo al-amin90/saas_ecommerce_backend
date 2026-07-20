@@ -33,6 +33,7 @@ const orderSchema = new Schema<IOrder>(
         },
         quantity: Number,
         selectedSize: String,
+        image: String,
         colorId: {
           type: Schema.Types.ObjectId,
           ref: "Color",

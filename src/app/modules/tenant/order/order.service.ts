@@ -1549,11 +1549,6 @@ const handleCourierWebhookInDB = async (
       { new: true },
     );
 
-    console.log(`✅ Order ${updatedOrder.orderNumber} updated:`, {
-      orderStatus: newOrderStatus,
-      paymentStatus: newPaymentStatus,
-    });
-
     // 5. (Optional) Send notification to user
     // await sendOrderStatusNotification(updatedOrder, newStatus);
 
