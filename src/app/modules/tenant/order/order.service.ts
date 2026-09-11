@@ -10,11 +10,7 @@ import { Types } from "mongoose";
 import stockValidationService from "./stockValidation.service";
 import status from "http-status";
 import AppError from "../../../errors/AppError";
-import {
-  VALID_ORDER_STATUSES,
-  VALID_PAYMENT_STATUSES,
-  VALID_STATUS_TRANSITIONS,
-} from "./order.const";
+import { VALID_ORDER_STATUSES, VALID_PAYMENT_STATUSES } from "./order.const";
 import { TProduct } from "../product/product.interface";
 import {
   startOfDay,
@@ -415,17 +411,6 @@ const updateOrderStatusInDB = async (
         throw new AppError(
           status.BAD_REQUEST,
           `Invalid order status. Must be one of: ${VALID_ORDER_STATUSES.join(", ")}`,
-        );
-      }
-
-      // Validate status transition
-      const allowedTransitions =
-        VALID_STATUS_TRANSITIONS[order.orderStatus] || [];
-
-      if (!allowedTransitions.includes(orderStatus)) {
-        throw new AppError(
-          status.BAD_REQUEST,
-          `Cannot transition from "${order.orderStatus}" to "${orderStatus}". Allowed transitions: ${allowedTransitions.join(", ")}`,
         );
       }
 
@@ -1599,27 +1584,54 @@ const handleSteadfastWebhookInDB = async (
     if (payload.notification_type === "delivery_status") {
       const statusMap: Record<string, string> = {
         pending: "processing",
+        in_review: "processing",
+        processing: "processing",
+        transit: "shipped",
+        transit_to_delivery: "shipped",
+        waiting_for_delivery: "shipped",
+        trying_to_deliver: "shipped",
         delivered: "delivered",
-        partial_delivered: "shipped",
+        partial_delivered: "returned",
         cancelled: "cancelled",
+        returned: "returned",
+        returned_to_sender: "returned",
+        delivery_failed: "delivery_failed",
+        expired: "delivery_failed",
+        damaged: "delivery_failed",
+        lost: "delivery_failed",
+        pickup_failed: "delivery_failed",
         unknown: "processing",
       };
 
-      const newOrderStatus =
-        statusMap[payload.status?.toLowerCase() ?? ""] ?? "processing";
+      const rawStatus = payload.status?.toLowerCase() ?? "";
+      const newOrderStatus = statusMap[rawStatus] ?? "processing";
+
+      // payment update: delivered → paid, cancelled/returned → failed
+      let newPaymentStatus = order.paymentStatus;
+      if (newOrderStatus === "delivered") newPaymentStatus = "paid";
+      if (newOrderStatus === "cancelled" || newOrderStatus === "returned")
+        newPaymentStatus = "failed";
 
       const updated = await Order.findOneAndUpdate(
         { orderNumber: payload.invoice },
         {
-          orderStatus: newOrderStatus,
-          invoice_id: payload.invoice,
-          "courier.status": payload.status,
-          "courier.trackingCode": payload.tracking_message,
-
-          // delivered হলে payment complete করো
-          ...(newOrderStatus === "delivered" && {
-            paymentStatus: "paid",
-          }),
+          $set: {
+            orderStatus: newOrderStatus,
+            paymentStatus: newPaymentStatus,
+            invoice_id: payload.invoice,
+            "courier.consignmentId": payload.consignment_id,
+            "courier.status": payload.status,
+            "courier.trackingCode": payload.tracking_message,
+            "courier.updatedAt": payload.updated_at,
+            "courier.cod_amount": payload.cod_amount,
+            "courier.delivery_charge": payload.delivery_charge,
+            "courier.lastEvent":
+              payload.notification_type +
+              (rawStatus ? `:${rawStatus}` : ""),
+            updatedAt: payload.updated_at
+              ? new Date(payload.updated_at)
+              : new Date(),
+          },
         },
         { new: true },
       );
@@ -1627,6 +1639,19 @@ const handleSteadfastWebhookInDB = async (
       console.log("updated", updated);
 
       console.log(`✅ Order ${payload.invoice} status → ${newOrderStatus}`);
+
+      // cancelled / returned হলে stock restore করো (একবারই)
+      if (
+        (newOrderStatus === "cancelled" || newOrderStatus === "returned") &&
+        order.orderStatus !== "cancelled" &&
+        order.orderStatus !== "returned"
+      ) {
+        console.log(`📈 Restoring stock for ${newOrderStatus} order...`);
+        await stockValidationService.restoreStock(
+          subdomain,
+          order.items as any,
+        );
+      }
     }
 
     // ── Tracking Update ────────────────────────────────────────────────────
@@ -1634,8 +1659,11 @@ const handleSteadfastWebhookInDB = async (
       await Order.findOneAndUpdate(
         { orderNumber: payload.invoice },
         {
-          "courier.trackingCode": payload.tracking_message,
-          // "courier.updatedAt": payload.updated_at,
+          $set: {
+            "courier.consignmentId": payload.consignment_id,
+            "courier.trackingCode": payload.tracking_message,
+            "courier.updatedAt": payload.updated_at,
+          },
         },
         { new: true },
       );
