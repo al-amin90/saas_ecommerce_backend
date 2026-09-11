@@ -75,6 +75,7 @@ const createOrderIntoDB = async (
       guestInfo: payload.guestInfo,
       items: payload.items,
       totalPrice: payload.totalPrice,
+      orderType: payload.orderType || "online",
       paymentMethod: payload.paymentMethod,
       paymentStatus: "pending",
       orderStatus: "pending", // ✅ শুধু pending
@@ -239,6 +240,7 @@ const getAllOrdersFromDB = async (
     limit?: number;
     orderStatus?: string;
     paymentStatus?: string;
+    orderType?: string;
     sortBy?: string;
     sortOrder?: "asc" | "desc";
   },
@@ -253,6 +255,7 @@ const getAllOrdersFromDB = async (
       limit = 10,
       orderStatus = "pending",
       paymentStatus,
+      orderType,
       sortBy = "createdAt",
       sortOrder = "desc",
     } = query;
@@ -264,6 +267,7 @@ const getAllOrdersFromDB = async (
     if (orderStatus && orderStatus !== "all") filter.orderStatus = orderStatus;
     if (paymentStatus && paymentStatus !== "all")
       filter.paymentStatus = paymentStatus;
+    if (orderType && orderType !== "all") filter.orderType = orderType;
 
     // ── Sort ─────────────────────────────────────────────────────────────────
     const sort: any = { [sortBy]: sortOrder === "asc" ? 1 : -1 };

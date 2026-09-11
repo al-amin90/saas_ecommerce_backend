@@ -65,7 +65,7 @@ const getAllOrders = catchAsync(
     const subdomain = req.headers["x-tenant"] as string;
     const userId = req.user?._id; // if authenticated
 
-    const { page, limit, orderStatus, paymentStatus, sortBy, sortOrder } =
+    const { page, limit, orderStatus, paymentStatus, orderType, sortBy, sortOrder } =
       req.query;
 
     const result = await orderService.getAllOrdersFromDB(subdomain, {
@@ -73,6 +73,7 @@ const getAllOrders = catchAsync(
       limit: limit ? Number(limit) : 10,
       orderStatus: orderStatus as string,
       paymentStatus: paymentStatus as string,
+      orderType: orderType as string,
       sortBy: sortBy as string,
       sortOrder: sortOrder as "asc" | "desc",
     });

@@ -41,6 +41,7 @@ export interface IOrder extends Document {
   // Order details
   items: IOrderItem[];
   totalPrice: number;
+  orderType: "manual" | "online";
 
   paymentMethod: "cod" | "card";
   orderStatus: OrderStatus;

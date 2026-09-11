@@ -57,6 +57,11 @@ const orderSchema = new Schema<IOrder>(
       enum: VALID_PAYMENT_STATUSES,
       default: "pending",
     },
+    orderType: {
+      type: String,
+      enum: ["manual", "online"],
+      default: "online",
+    },
     orderNumber: {
       type: String,
       unique: true,

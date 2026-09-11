@@ -26,6 +26,7 @@ const createOrderSchema = z.object({
     guestInfo: guestInfoSchema.optional(),
     items: z.array(orderItemSchema).min(1, "At least one item is required"),
     totalPrice: z.number().min(0, "Total price must be positive"),
+    orderType: z.enum(["manual", "online"]).optional().default("online"),
     paymentMethod: z.enum(["cash", "card"]),
   }),
 });
