@@ -4,7 +4,12 @@ import config from "../../../config";
 import { getTenantModel } from "../../../utils/getTenantModel";
 import PathaoService from "../courier/pathao.service";
 import { IDeliveryMethod } from "../deliveryMethod/deliveryMethod.interface";
-import { DateRange, IOrder } from "./order.interface";
+import {
+  DateRange,
+  IGuestInfo,
+  IOrder,
+  IOrderItem,
+} from "./order.interface";
 
 import { Types } from "mongoose";
 import stockValidationService from "./stockValidation.service";
@@ -476,6 +481,190 @@ const updateOrderStatusInDB = async (
   } finally {
     await session.endSession();
   }
+};
+
+// ✅ Full order edit (customer, items, statuses) with stock adjustment
+const updateOrderInDB = async (
+  subdomain: string,
+  orderId: string,
+  payload: {
+    guestCheckout?: boolean;
+    guestEmail?: string;
+    guestInfo?: Partial<IGuestInfo>;
+    items?: IOrderItem[];
+    totalPrice?: number;
+    orderType?: "manual" | "online";
+    paymentMethod?: "cod" | "card";
+    orderStatus?: string;
+    paymentStatus?: string;
+  },
+) => {
+  const session = await (
+    await getTenantModel(subdomain, "Order")
+  ).startSession();
+  session.startTransaction();
+
+  try {
+    console.log("🔄 Updating order...");
+    console.log("Order ID:", orderId);
+
+    if (!Types.ObjectId.isValid(orderId)) {
+      throw new AppError(status.BAD_REQUEST, "Invalid order ID format");
+    }
+
+    const Order = await getTenantModel<IOrder>(subdomain, "Order");
+
+    const order = await Order.findOne(
+      { _id: new Types.ObjectId(orderId) },
+      null,
+      { session },
+    );
+
+    if (!order) {
+      throw new AppError(status.NOT_FOUND, "Order not found");
+    }
+
+    const currentStatus = order.orderStatus;
+    const newStatus = payload.orderStatus ?? currentStatus;
+
+    if (payload.orderStatus && !VALID_ORDER_STATUSES.includes(payload.orderStatus)) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        `Invalid order status. Must be one of: ${VALID_ORDER_STATUSES.join(", ")}`,
+      );
+    }
+
+    if (payload.paymentStatus && !VALID_PAYMENT_STATUSES.includes(payload.paymentStatus)) {
+      throw new AppError(
+        status.BAD_REQUEST,
+        `Invalid payment status. Must be one of: ${VALID_PAYMENT_STATUSES.join(", ")}`,
+      );
+    }
+
+    const itemsChanged =
+      payload.items !== undefined && !areItemsEqual(order.items, payload.items);
+
+    const alreadyRestored =
+      currentStatus === "cancelled" || currentStatus === "returned";
+    const willBeRestored =
+      newStatus === "cancelled" || newStatus === "returned";
+
+    // ── Stock adjustment (transaction-scoped) ──
+    if (itemsChanged) {
+      if (alreadyRestored) {
+        // Stock ইতিমধ্যে ফেরত আছে — শুধু নতুন items খরচ করো
+        if (!willBeRestored) {
+          const result = await stockValidationService.checkStockAvailability(
+            subdomain,
+            payload.items as any,
+          );
+          if (!result.isAvailable) {
+            throw new AppError(
+              status.BAD_REQUEST,
+              `Insufficient stock: ${JSON.stringify(result.unavailableItems)}`,
+            );
+          }
+          await stockValidationService.reduceStock(
+            subdomain,
+            payload.items as any,
+            session,
+          );
+        }
+      } else if (willBeRestored) {
+        await stockValidationService.restoreStock(
+          subdomain,
+          order.items as any,
+          session,
+        );
+      } else {
+        await stockValidationService.restoreStock(
+          subdomain,
+          order.items as any,
+          session,
+        );
+        const result = await stockValidationService.checkStockAvailability(
+          subdomain,
+          payload.items as any,
+        );
+        if (!result.isAvailable) {
+          throw new AppError(
+            status.BAD_REQUEST,
+            `Insufficient stock: ${JSON.stringify(result.unavailableItems)}`,
+          );
+        }
+        await stockValidationService.reduceStock(
+          subdomain,
+          payload.items as any,
+          session,
+        );
+      }
+    } else if (!alreadyRestored && willBeRestored) {
+      // status-only change → cancel/return হলে stock restore
+      await stockValidationService.restoreStock(
+        subdomain,
+        order.items as any,
+        session,
+      );
+    }
+
+    // ── Build update payload ──
+    const updateData: any = {};
+
+    if (payload.guestCheckout !== undefined)
+      updateData.guestCheckout = payload.guestCheckout;
+    if (payload.guestEmail !== undefined)
+      updateData.guestEmail = payload.guestEmail;
+    if (payload.guestInfo) updateData.guestInfo = payload.guestInfo;
+    if (payload.items) updateData.items = payload.items;
+    if (payload.totalPrice !== undefined)
+      updateData.totalPrice = payload.totalPrice;
+    if (payload.orderType) updateData.orderType = payload.orderType;
+    if (payload.paymentMethod) updateData.paymentMethod = payload.paymentMethod;
+    if (payload.orderStatus) updateData.orderStatus = payload.orderStatus;
+    if (payload.paymentStatus) updateData.paymentStatus = payload.paymentStatus;
+
+    // cancel/return হলে payment failed force-set
+    if (willBeRestored) {
+      updateData.paymentStatus = "failed";
+    }
+
+    updateData.updatedAt = new Date();
+
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id: new Types.ObjectId(orderId) },
+      { $set: updateData },
+      { new: true, session, runValidators: true },
+    ).populate([
+      { path: "items.productId", select: "name price images" },
+      { path: "items.colorId", select: "name color" },
+    ]);
+
+    await session.commitTransaction();
+    console.log("✅ Order updated successfully");
+
+    return updatedOrder;
+  } catch (error) {
+    await session.abortTransaction();
+    console.error("❌ Error updating order:", error);
+    throw error;
+  } finally {
+    await session.endSession();
+  }
+};
+
+// Compare old vs new items ignoring order
+const areItemsEqual = (a: IOrderItem[], b: IOrderItem[]): boolean => {
+  if (a.length !== b.length) return false;
+
+  const itemKey = (i: any) =>
+    `${i.productId?.toString?.() ?? i.productId}_${
+      i.colorId?.toString?.() ?? i.colorId
+    }_${i.selectedSize}_${i.quantity}_${i.price}`;
+
+  const sortedA = [...a].map(itemKey).sort();
+  const sortedB = [...b].map(itemKey).sort();
+
+  return sortedA.every((k, i) => k === sortedB[i]);
 };
 
 const cancelOrderInDB = async (subdomain: string, orderId: string) => {
@@ -1690,6 +1879,7 @@ export default {
   getOrderByIdFromDB,
   getGuestOrderFromDB,
   updateOrderStatusInDB,
+  updateOrderInDB,
   cancelOrderInDB,
   getDashboardStatsFromDB,
   handleCourierWebhookInDB,

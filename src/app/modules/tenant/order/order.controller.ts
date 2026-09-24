@@ -149,6 +149,26 @@ const updateOrderStatus = catchAsync(
   },
 );
 
+const updateOrder = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const subdomain = req.headers["x-tenant"] as string;
+    const orderId = req.params?.orderId as string;
+
+    const result = await orderService.updateOrderInDB(
+      subdomain,
+      orderId,
+      req.body,
+    );
+
+    sendResponse(res, {
+      statusCode: status.OK,
+      success: true,
+      message: "Order updated successfully",
+      data: result,
+    });
+  },
+);
+
 const cancelOrder = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const subdomain = req.headers["x-tenant"] as string;
@@ -366,6 +386,7 @@ export const orderController = {
   getOrderById,
   getGuestOrder,
   updateOrderStatus,
+  updateOrder,
   cancelOrder,
   getDashboardStats,
   receivePathaoWebhook,

@@ -2,7 +2,7 @@ import status from "http-status";
 import AppError from "../../../errors/AppError";
 import { getTenantModel } from "../../../utils/getTenantModel";
 import { TProduct, TVariant } from "../product/product.interface";
-import { Types } from "mongoose";
+import { Types, ClientSession } from "mongoose";
 import { TColor } from "../color/color.interface";
 
 interface StockCheckItem {
@@ -117,13 +117,18 @@ const checkStockAvailability = async (
 const reduceStock = async (
   subdomain: string,
   items: StockCheckItem[],
+  session?: ClientSession,
 ): Promise<void> => {
   const Product = await getTenantModel<TProduct>(subdomain, "Product");
 
   for (const item of items) {
-    const product = await Product.findOne({
-      _id: new Types.ObjectId(item.productId),
-    });
+    const product = await Product.findOne(
+      {
+        _id: new Types.ObjectId(item.productId),
+      },
+      null,
+      { session },
+    );
 
     if (!product) {
       throw new AppError(
@@ -161,7 +166,7 @@ const reduceStock = async (
     await Product.findByIdAndUpdate(
       product._id,
       { variant: product.variant },
-      { new: true },
+      { new: true, session },
     );
   }
 };
@@ -170,13 +175,18 @@ const reduceStock = async (
 const restoreStock = async (
   subdomain: string,
   items: StockCheckItem[],
+  session?: ClientSession,
 ): Promise<void> => {
   const Product = await getTenantModel<TProduct>(subdomain, "Product");
 
   for (const item of items) {
-    const product = await Product.findOne({
-      _id: new Types.ObjectId(item.productId),
-    });
+    const product = await Product.findOne(
+      {
+        _id: new Types.ObjectId(item.productId),
+      },
+      null,
+      { session },
+    );
 
     if (!product) {
       console.warn(`Product not found: ${item.productId}`);
@@ -208,7 +218,7 @@ const restoreStock = async (
     await Product.findByIdAndUpdate(
       product._id,
       { variant: product.variant },
-      { new: true },
+      { new: true, session },
     );
   }
 };

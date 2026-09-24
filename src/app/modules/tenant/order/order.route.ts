@@ -38,6 +38,12 @@ router.patch(
   auth("admin"),
   orderController.updateOrderStatus,
 );
+router.patch(
+  "/:orderId",
+  auth("admin"),
+  validateRequest(orderValidations.updateOrderSchema),
+  orderController.updateOrder,
+);
 router.patch("/:orderId/cancel", auth("admin"), orderController.cancelOrder);
 
 router.get("/report/revenue", auth("admin"), orderController.getRevenueReport);

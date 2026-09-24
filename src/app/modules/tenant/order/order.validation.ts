@@ -44,8 +44,35 @@ const submitBulkOrderSchema = z.object({
   }),
 });
 
+// Update (full edit) Order Validation
+const updateOrderSchema = z.object({
+  body: z
+    .object({
+      guestCheckout: z.boolean().optional(),
+      guestEmail: z.union([z.string().email(), z.literal("")]).optional(),
+      guestInfo: guestInfoSchema.partial().optional(),
+      items: z
+        .array(
+          orderItemSchema.extend({
+            image: z.string().optional(),
+          }),
+        )
+        .min(1, "At least one item is required")
+        .optional(),
+      totalPrice: z.number().min(0, "Total price must be positive").optional(),
+      orderType: z.enum(["manual", "online"]).optional(),
+      paymentMethod: z.enum(["cash", "card"]).optional(),
+      orderStatus: z.string().optional(),
+      paymentStatus: z.string().optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, {
+      message: "No fields provided to update",
+    }),
+});
+
 export const orderValidations = {
   createOrderSchema,
   submitSingleOrderSchema,
   submitBulkOrderSchema,
+  updateOrderSchema,
 };
